@@ -42,11 +42,51 @@ nvm use
 pnpm build
 ```
 
+## 发布
+
+本项目版本号需要同时更新两处：
+
+- `package.json` 的 `version`
+- `public/manifest.json` 的 `version`
+
+本地生成 Chrome Web Store 可上传的 zip：
+
+```sh
+nvm use
+pnpm release:build
+```
+
+产物会输出到 `release/` 目录，zip 内只包含 `dist/` 中的扩展运行文件，不包含 source map。
+
+### GitHub Actions
+
+推送形如 `v0.2.0` 的 tag 会触发 `.github/workflows/release.yml`：
+
+- 安装依赖
+- 执行 `pnpm typecheck`
+- 执行 `pnpm build`
+- 生成扩展 zip
+- 上传 workflow artifact
+- 创建 GitHub Release 并附加 zip
+- 如果已配置 Chrome Web Store secrets，则上传到 Chrome Web Store 并提交审核
+
+Chrome Web Store 发布需要在 GitHub 仓库 secrets 中配置：
+
+- `CWS_PUBLISHER_ID`
+- `CWS_EXTENSION_ID`
+- `CWS_CLIENT_ID`
+- `CWS_CLIENT_SECRET`
+- `CWS_REFRESH_TOKEN`
+
+首次上架仍需要先在 Chrome Web Store Developer Dashboard 中创建条目，并完成商店详情、隐私声明、权限用途说明等信息。API 流程只负责上传新版本并提交审核。
+
 ## 当前能力
 
-- 在 `https://basic.smartedu.cn/tchMaterial/detail*` 页面右下角注入“下载 PDF”按钮。
+- 未登录时在课本详情页和扩展 popup 中显示登录引导，不提供下载入口。
+- 已登录时在 `https://basic.smartedu.cn/tchMaterial/detail*` 页面右下角注入“下载 PDF”按钮。
+- 在扩展 popup 中支持按学段、学科、年级、出版社/版本、册次筛选课本并直接下载。
 - 在扩展 popup 中支持下载当前标签页 PDF。
 - 在 `https://auth.smartedu.cn/*` 页面自动捕获当前会话的 Access Token。
-- 使用 MV3 service worker 解析资源 JSON，并通过 `chrome.downloads.download` 发起下载。
+- 使用 MV3 service worker 解析资源 JSON，并通过 `chrome.downloads.download` 携带授权头发起下载。
 
 PDF 书签写入还没有实现，后续可以在浏览器侧引入 PDF 处理库，或者把它设计成可选的离线处理流程。

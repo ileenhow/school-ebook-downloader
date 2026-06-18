@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "智慧教育平台课本下载助手",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "在国家中小学智慧教育平台课本页直接解析并下载 PDF。",
   "permissions": ["downloads", "scripting", "storage", "tabs"],
   "host_permissions": [

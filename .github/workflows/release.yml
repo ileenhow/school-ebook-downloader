@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload the build to Chrome Web Store and submit it for review."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+  CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+  CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+  CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+  CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+
+jobs:
+  release:
+    name: Build and publish extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build release package
+        run: pnpm release:build
+
+      - name: Locate release zip
+        id: package
+        run: |
+          zip_path="$(find release -maxdepth 1 -name '*.zip' | sort | head -n 1)"
+          if [ -z "$zip_path" ]; then
+            echo "No release zip found." >&2
+            exit 1
+          fi
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$zip_path")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${{ steps.package.outputs.zip_path }}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$tag" "${{ steps.package.outputs.zip_path }}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --notes "Chrome extension build for $tag."
+          fi
+
+      - name: Publish to Chrome Web Store
+        if: ${{ env.CWS_PUBLISHER_ID != '' && env.CWS_EXTENSION_ID != '' && env.CWS_CLIENT_ID != '' && env.CWS_CLIENT_SECRET != '' && env.CWS_REFRESH_TOKEN != '' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
+        run: pnpm cws:publish "${{ steps.package.outputs.zip_path }}"
+
+      - name: Skip Chrome Web Store publish
+        if: ${{ !(env.CWS_PUBLISHER_ID != '' && env.CWS_EXTENSION_ID != '' && env.CWS_CLIENT_ID != '' && env.CWS_CLIENT_SECRET != '' && env.CWS_REFRESH_TOKEN != '' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish))) }}
+        run: echo "Chrome Web Store publish skipped. Configure CWS_* repository secrets, or run manually with publish=true."
