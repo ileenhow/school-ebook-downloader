@@ -22,18 +22,28 @@ type SmartEduThematicResource = SmartEduResourceDetails & {
 };
 
 const PRIVATE_RESOURCE_BASE = "https://r1-ndr-private.ykt.cbern.com.cn";
-const PUBLIC_RESOURCE_BASE = "https://c1.ykt.cbern.com.cn";
 
 export async function parseSmartEduResource(
   pageUrl: string,
-  accessToken?: string
+  accessToken: string
 ): Promise<ParsedSmartEduResource> {
   const params = parsePageUrl(pageUrl);
+  return parseSmartEduResourceFromParams(params, accessToken);
+}
+
+export async function parseSmartEduResourceFromParams(
+  params: {
+    contentId: string;
+    contentType: string;
+    isBasicWork?: boolean;
+  },
+  _accessToken: string
+): Promise<ParsedSmartEduResource> {
   const details = await fetchResourceDetails(params);
   const downloadUrl =
-    findSourceDownloadUrl(details.ti_items, accessToken) ??
+    findSourceDownloadUrl(details.ti_items) ??
     (params.contentType === "thematic_course"
-      ? await findThematicDocumentUrl(params.contentId, accessToken)
+      ? await findThematicDocumentUrl(params.contentId)
       : undefined);
 
   if (!downloadUrl) {
@@ -72,7 +82,7 @@ function parsePageUrl(pageUrl: string): {
 async function fetchResourceDetails(params: {
   contentId: string;
   contentType: string;
-  isBasicWork: boolean;
+  isBasicWork?: boolean;
 }): Promise<SmartEduResourceDetails> {
   const endpoint =
     params.isBasicWork || params.contentType === "thematic_course"
@@ -82,10 +92,7 @@ async function fetchResourceDetails(params: {
   return fetchJson<SmartEduResourceDetails>(endpoint);
 }
 
-async function findThematicDocumentUrl(
-  contentId: string,
-  accessToken?: string
-): Promise<string | undefined> {
+async function findThematicDocumentUrl(contentId: string): Promise<string | undefined> {
   const resources = await fetchJson<SmartEduThematicResource[]>(
     `https://s-file-1.ykt.cbern.com.cn/zxx/ndrs/special_edu/thematic_course/${contentId}/resources/list.json`
   );
@@ -95,7 +102,7 @@ async function findThematicDocumentUrl(
       continue;
     }
 
-    const url = findSourceDownloadUrl(resource.ti_items, accessToken);
+    const url = findSourceDownloadUrl(resource.ti_items);
     if (url) {
       return url;
     }
@@ -104,10 +111,7 @@ async function findThematicDocumentUrl(
   return undefined;
 }
 
-function findSourceDownloadUrl(
-  items: SmartEduResourceItem[] | undefined,
-  accessToken?: string
-): string | undefined {
+function findSourceDownloadUrl(items: SmartEduResourceItem[] | undefined): string | undefined {
   if (!items) {
     return undefined;
   }
@@ -118,25 +122,22 @@ function findSourceDownloadUrl(
     }
 
     if (item.ti_storage) {
-      return normalizeStorageUrl(item.ti_storage, accessToken);
+      return normalizeStorageUrl(item.ti_storage);
     }
 
     const storageUrl = item.ti_storages?.find(Boolean);
     if (storageUrl) {
-      return accessToken ? storageUrl : toPublicResourceUrl(storageUrl);
+      return storageUrl.startsWith("cs_path:")
+        ? normalizeStorageUrl(storageUrl)
+        : storageUrl;
     }
   }
 
   return undefined;
 }
 
-function normalizeStorageUrl(storage: string, accessToken?: string): string {
-  const base = accessToken ? PRIVATE_RESOURCE_BASE : PUBLIC_RESOURCE_BASE;
-  return storage.replace("cs_path:${ref-path}", base);
-}
-
-function toPublicResourceUrl(resourceUrl: string): string {
-  return resourceUrl.replace(/^https?:\/\/[^/]+\.ykt\.cbern\.com\.cn\/(.+)$/u, `${PUBLIC_RESOURCE_BASE}/$1`);
+function normalizeStorageUrl(storage: string): string {
+  return storage.replace("cs_path:${ref-path}", PRIVATE_RESOURCE_BASE);
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -157,4 +158,3 @@ function sanitizeFilename(filename: string): string {
 
   return (sanitized || "smartedu-ebook").slice(0, 120);
 }
-

@@ -3,7 +3,7 @@
 }
 
 body {
-  width: 320px;
+  width: 420px;
   margin: 0;
   color: #172b3a;
   background: #f7fafc;
@@ -13,7 +13,16 @@ body {
 .shell {
   display: grid;
   gap: 14px;
-  padding: 18px;
+  padding: 16px;
+}
+
+.header,
+.catalog-head,
+.result {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .eyebrow {
@@ -25,37 +34,78 @@ body {
   text-transform: uppercase;
 }
 
-h1 {
+h1,
+h2,
+h3,
+p {
   margin: 0;
+}
+
+h1 {
   font-size: 20px;
   line-height: 1.2;
 }
 
-.status {
-  min-height: 36px;
-  padding: 10px;
-  border: 1px solid #dbe6ef;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #38546b;
+h2 {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+h3 {
   font-size: 13px;
   line-height: 1.35;
 }
 
+.badge {
+  flex: 0 0 auto;
+  min-width: 54px;
+  padding: 5px 8px;
+  border: 1px solid #d5e2ec;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #38546b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.status,
+.notice,
+.message {
+  color: #38546b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.status,
+.login-panel,
+.catalog,
+.empty-state {
+  border: 1px solid #dbe6ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.status {
+  min-height: 38px;
+  padding: 10px;
+}
+
 .actions {
   display: grid;
+  grid-template-columns: 1fr 1fr auto;
   gap: 8px;
+  margin-bottom: 12px;
 }
 
 button {
-  width: 100%;
-  min-height: 38px;
+  min-height: 36px;
   border: 0;
   border-radius: 6px;
   background: #1565c0;
   color: #ffffff;
   cursor: pointer;
-  font: 700 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 700 13px/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 button:disabled {
@@ -70,14 +120,102 @@ button:disabled {
 }
 
 .ghost {
+  border: 1px solid transparent;
   background: transparent;
   color: #607586;
 }
 
-.hint {
-  margin: 0;
+.small {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 8px;
+}
+
+.login-panel,
+.catalog,
+.empty-state {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.login-panel p,
+.catalog-head p,
+.result-copy p,
+.result-summary,
+.loading {
   color: #607586;
   font-size: 12px;
   line-height: 1.45;
 }
 
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.filter {
+  display: grid;
+  gap: 4px;
+}
+
+.filter span {
+  color: #607586;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #c9d8e4;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172b3a;
+  font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.notice {
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff7e6;
+  color: #7a4d00;
+}
+
+.results {
+  display: grid;
+  max-height: 340px;
+  overflow: auto;
+  border-top: 1px solid #edf3f7;
+}
+
+.result {
+  padding: 10px 0;
+  border-bottom: 1px solid #edf3f7;
+}
+
+.result-copy {
+  min-width: 0;
+}
+
+.result-copy h3 {
+  overflow-wrap: anywhere;
+}
+
+.download-book {
+  flex: 0 0 56px;
+  min-height: 32px;
+}
+
+.empty-state.compact {
+  border: 0;
+  padding: 12px 0 4px;
+  color: #607586;
+  font-size: 13px;
+}
+
+.message {
+  min-height: 18px;
+}

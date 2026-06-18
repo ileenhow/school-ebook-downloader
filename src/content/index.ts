@@ -1,17 +1,47 @@
-import type { DownloadCurrentPageResponse } from "../shared/messages";
+import type {
+  DownloadCurrentPageResponse,
+  TokenStatusChangedMessage,
+  TokenStatusResponse
+} from "../shared/messages";
 
 const ROOT_ID = "school-ebook-downloader-root";
+const LISTENER_FLAG = "__schoolEbookDownloaderTokenListener";
 
-injectDownloadButton();
+type ContentWindow = Window &
+  typeof globalThis & {
+    [LISTENER_FLAG]?: boolean;
+  };
 
-function injectDownloadButton(): void {
-  if (document.getElementById(ROOT_ID)) {
-    return;
+type PanelElements = {
+  shadow: ShadowRoot;
+};
+
+void renderFromTokenStatus();
+
+const contentWindow = window as ContentWindow;
+if (!contentWindow[LISTENER_FLAG]) {
+  contentWindow[LISTENER_FLAG] = true;
+  chrome.runtime.onMessage.addListener((message: TokenStatusChangedMessage) => {
+    if (message.type === "tokenStatusChanged") {
+      renderPanel(message.hasToken);
+    }
+  });
+}
+
+async function renderFromTokenStatus(): Promise<void> {
+  try {
+    const status = (await chrome.runtime.sendMessage({
+      type: "getTokenStatus"
+    })) as TokenStatusResponse;
+
+    renderPanel(status.ok && status.hasToken);
+  } catch {
+    renderPanel(false);
   }
+}
 
-  const host = document.createElement("div");
-  host.id = ROOT_ID;
-  const shadow = host.attachShadow({ mode: "open" });
+function renderPanel(hasToken: boolean): void {
+  const { shadow } = ensureRoot();
   shadow.innerHTML = `
     <style>
       :host {
@@ -26,7 +56,7 @@ function injectDownloadButton(): void {
       .panel {
         display: grid;
         gap: 8px;
-        min-width: 168px;
+        width: 188px;
         padding: 10px;
         border: 1px solid rgba(10, 36, 57, 0.14);
         border-radius: 8px;
@@ -37,13 +67,19 @@ function injectDownloadButton(): void {
 
       button {
         appearance: none;
-        height: 36px;
+        min-height: 36px;
         border: 0;
         border-radius: 6px;
         background: #1565c0;
         color: white;
         cursor: pointer;
-        font: 600 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 600 14px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button.secondary {
+        border: 1px solid #9db4c8;
+        background: #ffffff;
+        color: #174a7a;
       }
 
       button:disabled {
@@ -51,34 +87,67 @@ function injectDownloadButton(): void {
         opacity: 0.65;
       }
 
+      .title {
+        margin: 0;
+        color: #172b3a;
+        font: 700 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
       .status {
-        max-width: 220px;
         color: #38546b;
         font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         word-break: break-word;
       }
     </style>
     <section class="panel" aria-label="课本下载助手">
-      <button type="button">下载 PDF</button>
-      <span class="status">已识别课本页面</span>
+      ${
+        hasToken
+          ? `
+            <button id="downloadButton" type="button">下载 PDF</button>
+            <span class="status" id="statusText">已登录，可下载当前课本。</span>
+          `
+          : `
+            <p class="title">登录后可下载</p>
+            <span class="status" id="statusText">请先登录智慧教育平台，再下载当前课本 PDF。</span>
+            <button id="loginButton" type="button" class="secondary">前往登录</button>
+          `
+      }
     </section>
   `;
 
-  document.documentElement.append(host);
+  const downloadButton = shadow.querySelector<HTMLButtonElement>("#downloadButton");
+  const loginButton = shadow.querySelector<HTMLButtonElement>("#loginButton");
+  const statusText = shadow.querySelector<HTMLElement>("#statusText");
 
-  const button = shadow.querySelector("button");
-  const status = shadow.querySelector(".status");
+  downloadButton?.addEventListener("click", () => {
+    if (statusText) {
+      void downloadCurrentPage(downloadButton, statusText);
+    }
+  });
 
-  if (!button || !status) {
-    return;
-  }
-
-  button.addEventListener("click", () => {
-    void downloadCurrentPage(button, status);
+  loginButton?.addEventListener("click", () => {
+    void chrome.runtime.sendMessage({ type: "openLoginPage" });
   });
 }
 
-async function downloadCurrentPage(button: HTMLButtonElement, status: Element): Promise<void> {
+function ensureRoot(): PanelElements {
+  const existing = document.getElementById(ROOT_ID);
+  if (existing?.shadowRoot) {
+    return { shadow: existing.shadowRoot };
+  }
+
+  const host = document.createElement("div");
+  host.id = ROOT_ID;
+  const shadow = host.attachShadow({ mode: "open" });
+  document.documentElement.append(host);
+
+  return { shadow };
+}
+
+async function downloadCurrentPage(
+  button: HTMLButtonElement,
+  status: HTMLElement
+): Promise<void> {
   button.disabled = true;
   status.textContent = "正在解析资源...";
 
@@ -99,4 +168,3 @@ async function downloadCurrentPage(button: HTMLButtonElement, status: Element): 
     button.disabled = false;
   }
 }
-
