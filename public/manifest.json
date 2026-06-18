@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "智慧教育平台课本下载助手",
+  "version": "0.1.0",
+  "description": "在国家中小学智慧教育平台课本页直接解析并下载 PDF。",
+  "permissions": ["downloads", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "https://basic.smartedu.cn/*",
+    "https://auth.smartedu.cn/*",
+    "https://s-file-1.ykt.cbern.com.cn/*",
+    "https://*.ykt.cbern.com.cn/*"
+  ],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "课本下载助手",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://basic.smartedu.cn/tchMaterial/detail*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://auth.smartedu.cn/*"],
+      "js": ["assets/auth.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
