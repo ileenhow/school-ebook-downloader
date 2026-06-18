@@ -25,6 +25,10 @@ Copyright (c) 2026 肥宅水水呀
 
 本项目采用 MIT License 开源，详见 [LICENSE](./LICENSE)。
 
+## 隐私政策
+
+详见 [PRIVACY.md](./PRIVACY.md)。
+
 ## 开发
 
 ```sh
