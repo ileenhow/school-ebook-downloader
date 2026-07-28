@@ -28,19 +28,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate Chrome Web Store credentials
-        if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
-        shell: bash
-        run: |
-          missing=0
-          for name in CWS_PUBLISHER_ID CWS_EXTENSION_ID CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
-            if [ -z "${!name}" ]; then
-              echo "Missing required GitHub Actions secret: $name" >&2
-              missing=1
-            fi
-          done
-          exit "$missing"
-
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -76,10 +63,6 @@ jobs:
           path: ${{ steps.package.outputs.zip_path }}
           if-no-files-found: error
 
-      - name: Publish to Chrome Web Store
-        if: ${{ env.CWS_PUBLISHER_ID != '' && env.CWS_EXTENSION_ID != '' && env.CWS_CLIENT_ID != '' && env.CWS_CLIENT_SECRET != '' && env.CWS_REFRESH_TOKEN != '' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
-        run: pnpm cws:publish "${{ steps.package.outputs.zip_path }}"
-
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -97,6 +80,10 @@ jobs:
               --notes "Chrome extension build for $tag."
           fi
 
+      - name: Publish to Chrome Web Store
+        if: ${{ env.CWS_PUBLISHER_ID != '' && env.CWS_EXTENSION_ID != '' && env.CWS_CLIENT_ID != '' && env.CWS_CLIENT_SECRET != '' && env.CWS_REFRESH_TOKEN != '' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
+        run: pnpm cws:publish "${{ steps.package.outputs.zip_path }}"
+
       - name: Skip Chrome Web Store publish
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
-        run: echo "Chrome Web Store publish skipped because publish=false."
+        if: ${{ !(env.CWS_PUBLISHER_ID != '' && env.CWS_EXTENSION_ID != '' && env.CWS_CLIENT_ID != '' && env.CWS_CLIENT_SECRET != '' && env.CWS_REFRESH_TOKEN != '' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish))) }}
+        run: echo "Chrome Web Store publish skipped. Configure CWS_* repository secrets, or run manually with publish=true."
