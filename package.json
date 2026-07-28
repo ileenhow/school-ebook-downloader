@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "zip": "node scripts/package-extension.mjs",
     "release:build": "pnpm typecheck && pnpm build && pnpm zip",
+    "cws:check": "node scripts/chrome-web-store-publish.mjs --check",
     "cws:upload": "node scripts/chrome-web-store-publish.mjs --no-publish",
     "cws:publish": "node scripts/chrome-web-store-publish.mjs",
     "clean": "rm -rf dist"

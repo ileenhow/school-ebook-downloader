@@ -4,9 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
+const checkOnly = args.includes("--check");
 const noPublish = args.includes("--no-publish");
-const explicitZipPath = args.find((arg) => !arg.startsWith("--"));
-const zipPath = explicitZipPath ? resolve(projectRoot, explicitZipPath) : await findDefaultZipPath();
 
 const env = readRequiredEnv([
   "CWS_PUBLISHER_ID",
@@ -17,13 +16,20 @@ const env = readRequiredEnv([
 ]);
 const accessToken = await refreshAccessToken(env);
 
-await uploadPackage(accessToken, env.CWS_PUBLISHER_ID, env.CWS_EXTENSION_ID, zipPath);
-
-if (noPublish) {
-  console.log("已上传到 Chrome Web Store，跳过提交审核。");
+if (checkOnly) {
+  await fetchItemStatus(accessToken, env.CWS_PUBLISHER_ID, env.CWS_EXTENSION_ID);
+  console.log("Chrome Web Store API 凭证验证成功。");
 } else {
-  await publishPackage(accessToken, env.CWS_PUBLISHER_ID, env.CWS_EXTENSION_ID);
-  console.log("已提交 Chrome Web Store 审核。");
+  const explicitZipPath = args.find((arg) => !arg.startsWith("--"));
+  const zipPath = explicitZipPath ? resolve(projectRoot, explicitZipPath) : await findDefaultZipPath();
+  await uploadPackage(accessToken, env.CWS_PUBLISHER_ID, env.CWS_EXTENSION_ID, zipPath);
+
+  if (noPublish) {
+    console.log("已上传到 Chrome Web Store，跳过提交审核。");
+  } else {
+    await publishPackage(accessToken, env.CWS_PUBLISHER_ID, env.CWS_EXTENSION_ID);
+    console.log("已提交 Chrome Web Store 审核。");
+  }
 }
 
 async function findDefaultZipPath() {
@@ -60,6 +66,22 @@ async function refreshAccessToken(env) {
   }
 
   return data.access_token;
+}
+
+async function fetchItemStatus(accessToken, publisherId, extensionId) {
+  const statusUrl = `https://chromewebstore.googleapis.com/v2/publishers/${publisherId}/items/${extensionId}:fetchStatus`;
+  const response = await fetch(statusUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  const data = await readJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(`读取 Chrome Web Store 条目状态失败：${formatApiError(data)}`);
+  }
+
+  console.log(JSON.stringify(data, null, 2));
 }
 
 async function uploadPackage(accessToken, publisherId, extensionId, packagePath) {
