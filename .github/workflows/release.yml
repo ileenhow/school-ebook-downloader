@@ -22,12 +22,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
@@ -52,7 +52,7 @@ jobs:
           echo "zip_name=$(basename "$zip_path")" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.package.outputs.zip_name }}
           path: ${{ steps.package.outputs.zip_path }}
