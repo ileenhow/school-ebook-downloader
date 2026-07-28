@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "智慧教育平台课本下载助手",
-  "version": "0.2.0",
-  "description": "在国家中小学智慧教育平台课本页直接解析并下载 PDF。",
+  "name": "__MSG_extensionName__",
+  "version": "0.2.1",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "zh_CN",
   "permissions": ["downloads", "scripting", "storage", "tabs"],
   "host_permissions": [
     "https://basic.smartedu.cn/*",
@@ -15,7 +16,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "课本下载助手",
+    "default_title": "__MSG_actionTitle__",
     "default_popup": "popup.html"
   },
   "content_scripts": [

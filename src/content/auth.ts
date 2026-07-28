@@ -1,10 +1,21 @@
 import type { ExtensionRequest } from "../shared/messages";
 
+(() => {
 const AUTH_KEY_PREFIX = "ND_UC_AUTH";
 const POLL_INTERVAL_MS = 1000;
 const MAX_ATTEMPTS = 600;
+const CAPTURE_FLAG = "__schoolEbookDownloaderAuthCapture";
 
-void captureTokenWhenAvailable();
+type AuthWindow = Window &
+  typeof globalThis & {
+    [CAPTURE_FLAG]?: boolean;
+  };
+
+const authWindow = window as AuthWindow;
+if (!authWindow[CAPTURE_FLAG]) {
+  authWindow[CAPTURE_FLAG] = true;
+  void captureTokenWhenAvailable();
+}
 
 async function captureTokenWhenAvailable(): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -52,3 +63,4 @@ function wait(ms: number): Promise<void> {
     window.setTimeout(resolve, ms);
   });
 }
+})();

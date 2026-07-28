@@ -4,6 +4,7 @@ import type {
   TokenStatusResponse
 } from "../shared/messages";
 
+(() => {
 const ROOT_ID = "school-ebook-downloader-root";
 const LISTENER_FLAG = "__schoolEbookDownloaderTokenListener";
 
@@ -168,3 +169,4 @@ async function downloadCurrentPage(
     button.disabled = false;
   }
 }
+})();
