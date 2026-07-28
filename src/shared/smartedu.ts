@@ -22,6 +22,7 @@ type SmartEduThematicResource = SmartEduResourceDetails & {
 };
 
 const PRIVATE_RESOURCE_BASE = "https://r1-ndr-private.ykt.cbern.com.cn";
+const TRUSTED_DOWNLOAD_DOMAIN = "ykt.cbern.com.cn";
 
 export async function parseSmartEduResource(
   pageUrl: string,
@@ -54,9 +55,36 @@ export async function parseSmartEduResourceFromParams(
 
   return {
     title,
-    downloadUrl,
+    downloadUrl: requireTrustedDownloadUrl(downloadUrl),
     filename: `${sanitizeFilename(title)}.pdf`
   };
+}
+
+function requireTrustedDownloadUrl(downloadUrl: string): string {
+  let url: URL;
+
+  try {
+    url = new URL(downloadUrl);
+  } catch {
+    throw new Error("平台返回了无效的下载地址，已阻止下载。");
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const isTrustedHostname =
+    hostname === TRUSTED_DOWNLOAD_DOMAIN || hostname.endsWith(`.${TRUSTED_DOWNLOAD_DOMAIN}`);
+  const usesDefaultHttpsPort = url.port === "" || url.port === "443";
+
+  if (
+    url.protocol !== "https:" ||
+    !usesDefaultHttpsPort ||
+    url.username !== "" ||
+    url.password !== "" ||
+    !isTrustedHostname
+  ) {
+    throw new Error("平台返回了不受信任的下载地址，已阻止携带授权信息的下载。");
+  }
+
+  return url.href;
 }
 
 function parsePageUrl(pageUrl: string): {

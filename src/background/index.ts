@@ -22,8 +22,6 @@ import {
   type ParsedSmartEduResource
 } from "../shared/smartedu";
 
-const DETAIL_PAGE_PATTERN = /^https:\/\/basic\.smartedu\.cn\/tchMaterial\/detail/u;
-const AUTH_PAGE_PATTERN = /^https:\/\/auth\.smartedu\.cn\//u;
 const LOGIN_URL = "https://auth.smartedu.cn/uias/login";
 const CATALOG_CACHE_KEY = "smarteduCatalogCache";
 
@@ -32,21 +30,6 @@ type CatalogCache = CatalogFetchResult & {
 };
 
 let memoryCatalog: CatalogCache | undefined;
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status !== "complete" || !tab.url) {
-    return;
-  }
-
-  if (DETAIL_PAGE_PATTERN.test(tab.url)) {
-    void injectScript(tabId, "assets/content.js");
-    return;
-  }
-
-  if (AUTH_PAGE_PATTERN.test(tab.url)) {
-    void injectScript(tabId, "assets/auth.js");
-  }
-});
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendResponse) => {
   handleRequest(request)
@@ -60,17 +43,6 @@ chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendRe
 
   return true;
 });
-
-async function injectScript(tabId: number, file: string): Promise<void> {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: [file]
-    });
-  } catch {
-    // Some internal/error pages reject script injection. Static content scripts still cover normal loads.
-  }
-}
 
 async function handleRequest(request: ExtensionRequest): Promise<ExtensionResponse> {
   switch (request.type) {

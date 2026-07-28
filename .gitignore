@@ -5,3 +5,10 @@ release/
 *.log
 .env
 .env.*
+.credentials/
+credentials/
+client_secret*.json
+service-account*.json
+*.pem
+*.p12
+*.pfx
