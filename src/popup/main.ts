@@ -7,6 +7,8 @@ import type {
   DownloadResourcesResponse,
   TokenStatusResponse
 } from "../shared/messages";
+import alipaySupportQrUrl from "../assets/alipay-support-qr.png";
+import wechatSupportQrUrl from "../assets/wechat-support-qr.png";
 import { BookSelection } from "./selection";
 import "./styles.css";
 
@@ -28,24 +30,55 @@ let filters = createEmptyFilters();
 let catalogMeta: Pick<CatalogResponse, "updatedAt" | "fromCache" | "error"> = {};
 const selection = new BookSelection();
 let batchDownloading = false;
+const extensionVersion = chrome.runtime.getManifest().version;
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <section class="shell">
     <header class="header">
-      <div>
-        <p class="eyebrow">SmartEdu</p>
-        <h1>课本下载助手</h1>
-      </div>
-      <span class="badge" id="tokenBadge">读取中</span>
+      <h1>智慧教育平台课本下载助手 <span class="version">v${extensionVersion}</span></h1>
+      <span class="badge" id="tokenStatus">正在读取授权</span>
     </header>
 
-    <div class="status" id="tokenStatus">正在读取授权状态...</div>
     <main id="panel"></main>
     <p class="message" id="message" aria-live="polite"></p>
+
+    <footer class="support">
+      <details>
+        <summary>联系与支持</summary>
+        <div class="support-content">
+          <p class="support-email">
+            <span>联系开发者</span>
+            <a href="mailto:linc74030@gmail.com">linc74030@gmail.com</a>
+          </p>
+          <div class="support-payment">
+            <p>如果我的扩展帮到了你，欢迎打赏一瓶肥宅快乐水，不打赏也不影响扩展功能！</p>
+            <div class="payment-options">
+              <figure class="payment-option">
+                <img
+                  src="${alipaySupportQrUrl}"
+                  alt="支付宝支持开发者二维码"
+                  width="164"
+                  height="162"
+                >
+                <figcaption>支付宝</figcaption>
+              </figure>
+              <figure class="payment-option">
+                <img
+                  src="${wechatSupportQrUrl}"
+                  alt="微信支持开发者二维码"
+                  width="164"
+                  height="165"
+                >
+                <figcaption>微信</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </details>
+    </footer>
   </section>
 `;
 
-const tokenBadge = getElement("#tokenBadge");
 const tokenStatus = getElement("#tokenStatus");
 const panel = getElement("#panel");
 const message = getElement("#message");
@@ -68,18 +101,17 @@ async function initialize(): Promise<void> {
 
     renderLoggedOut(status);
   } catch (error) {
-    tokenBadge.textContent = "异常";
-    tokenStatus.textContent = "授权状态读取失败。";
+    tokenStatus.textContent = "异常 · 授权读取失败";
     renderLoggedOutActions();
     setMessage(error instanceof Error ? error.message : String(error));
   }
 }
 
 function renderLoggedOut(status?: TokenStatusResponse): void {
-  tokenBadge.textContent = "未登录";
-  tokenStatus.textContent = status?.updatedAt
-    ? `当前会话没有可用 Access Token。上次捕获：${formatDate(status.updatedAt)}`
-    : "当前会话没有可用 Access Token。";
+  tokenStatus.textContent = "未登录 · 无 Access Token";
+  tokenStatus.title = status?.updatedAt
+    ? `上次捕获：${formatDate(status.updatedAt)}`
+    : "当前会话没有可用 Access Token";
   books = [];
   filters = createEmptyFilters();
   catalogMeta = {};
@@ -103,8 +135,10 @@ function renderLoggedOutActions(): void {
 }
 
 function renderLoggedIn(status: TokenStatusResponse): void {
-  tokenBadge.textContent = "已登录";
-  tokenStatus.textContent = `已捕获 Access Token${formatUpdatedAt(status.updatedAt)}`;
+  tokenStatus.textContent = "已登录 · Token 已捕获";
+  tokenStatus.title = status.updatedAt
+    ? `捕获时间：${formatDate(status.updatedAt)}`
+    : "当前会话已捕获 Access Token";
   panel.innerHTML = `
     <div class="actions">
       <button id="downloadCurrent" type="button">下载当前页 PDF</button>
@@ -664,10 +698,6 @@ function formatCatalogMeta(): string {
   const source = catalogMeta.fromCache ? "本地缓存" : "平台目录";
   const updatedAt = catalogMeta.updatedAt ? `，${formatDate(catalogMeta.updatedAt)}` : "";
   return `${books.length} 本课本，来自${source}${updatedAt}`;
-}
-
-function formatUpdatedAt(updatedAt?: string): string {
-  return updatedAt ? `，${formatDate(updatedAt)}` : "";
 }
 
 function formatDate(value: string): string {

@@ -20,18 +20,28 @@ body {
 .catalog-head,
 .result {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.eyebrow {
-  margin: 0 0 4px;
+.header {
+  align-items: center;
+}
+
+.header h1 {
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.version {
   color: #607586;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
+}
+
+.catalog-head,
+.result {
+  align-items: flex-start;
 }
 
 h1,
@@ -58,7 +68,7 @@ h3 {
 
 .badge {
   flex: 0 0 auto;
-  min-width: 54px;
+  max-width: 154px;
   padding: 5px 8px;
   border: 1px solid #d5e2ec;
   border-radius: 999px;
@@ -66,10 +76,11 @@ h3 {
   color: #38546b;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.25;
   text-align: center;
+  white-space: nowrap;
 }
 
-.status,
 .notice,
 .message {
   color: #38546b;
@@ -77,18 +88,12 @@ h3 {
   line-height: 1.45;
 }
 
-.status,
 .login-panel,
 .catalog,
 .empty-state {
   border: 1px solid #dbe6ef;
   border-radius: 8px;
   background: #ffffff;
-}
-
-.status {
-  min-height: 38px;
-  padding: 10px;
 }
 
 .actions {
@@ -307,4 +312,79 @@ select {
 
 .message {
   min-height: 18px;
+}
+
+.support {
+  border-top: 1px solid #dbe6ef;
+  color: #607586;
+  font-size: 12px;
+}
+
+.support summary {
+  padding-top: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.support-content {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.support-email {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.support a {
+  color: #1565c0;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.support a:hover {
+  text-decoration: underline;
+}
+
+.support-payment {
+  display: grid;
+  gap: 10px;
+}
+
+.support-payment > p {
+  color: #38546b;
+  line-height: 1.55;
+}
+
+.payment-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.payment-option {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin: 0;
+}
+
+.payment-option img {
+  display: block;
+  width: 164px;
+  height: 164px;
+  border: 1px solid #dbe6ef;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.payment-option figcaption {
+  color: #172b3a;
+  font-size: 12px;
+  font-weight: 700;
 }
