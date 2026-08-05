@@ -1,10 +1,13 @@
 import type { BookItem } from "../shared/catalog";
 import type {
+  BatchDownloadProgressMessage,
   CatalogResponse,
   DownloadCurrentPageResponse,
   DownloadResourceResponse,
+  DownloadResourcesResponse,
   TokenStatusResponse
 } from "../shared/messages";
+import { BookSelection } from "./selection";
 import "./styles.css";
 
 const MAX_RESULTS = 80;
@@ -23,6 +26,8 @@ const FILTER_LABELS: Record<FilterKey, string> = {
 let books: BookItem[] = [];
 let filters = createEmptyFilters();
 let catalogMeta: Pick<CatalogResponse, "updatedAt" | "fromCache" | "error"> = {};
+const selection = new BookSelection();
+let batchDownloading = false;
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <section class="shell">
@@ -51,7 +56,10 @@ async function initialize(): Promise<void> {
   setMessage("");
 
   try {
-    const status = await getTokenStatus();
+    const initialStatus = await getTokenStatus();
+    const status = initialStatus.ok && !initialStatus.hasToken
+      ? await recoverToken()
+      : initialStatus;
     if (status.ok && status.hasToken) {
       renderLoggedIn(status);
       await loadCatalog();
@@ -75,6 +83,8 @@ function renderLoggedOut(status?: TokenStatusResponse): void {
   books = [];
   filters = createEmptyFilters();
   catalogMeta = {};
+  selection.clear();
+  batchDownloading = false;
   renderLoggedOutActions();
 }
 
@@ -131,6 +141,7 @@ async function loadCatalog(): Promise<void> {
     }
 
     books = response.books ?? [];
+    selection.retain(books.map((book) => book.contentId));
     catalogMeta = {
       updatedAt: response.updatedAt,
       fromCache: response.fromCache,
@@ -165,6 +176,7 @@ function renderCatalogBrowser(): void {
     </div>
 
     <div class="result-summary">${renderResultSummary(activeFilters.length, matchedBooks.length)}</div>
+    ${renderSelectionToolbar(activeFilters.length, visibleBooks)}
     <div class="results" id="results">
       ${renderResults(activeFilters.length, visibleBooks, matchedBooks.length)}
     </div>
@@ -192,6 +204,36 @@ function renderCatalogBrowser(): void {
       }
     });
   }
+
+  for (const checkbox of catalogPanel.querySelectorAll<HTMLInputElement>("input[data-select-content-id]")) {
+    checkbox.addEventListener("change", () => {
+      const contentId = checkbox.dataset.selectContentId;
+      if (contentId) {
+        selection.set(contentId, checkbox.checked);
+        updateSelectionControls(visibleBooks);
+      }
+    });
+  }
+
+  const selectVisible = catalogPanel.querySelector<HTMLInputElement>("#selectVisible");
+  selectVisible?.addEventListener("change", () => {
+    selection.setMany(
+      visibleBooks.map((book) => book.contentId),
+      selectVisible.checked
+    );
+    updateSelectionControls(visibleBooks);
+  });
+
+  catalogPanel.querySelector<HTMLButtonElement>("#clearSelected")?.addEventListener("click", () => {
+    selection.clear();
+    updateSelectionControls(visibleBooks);
+  });
+
+  catalogPanel.querySelector<HTMLButtonElement>("#downloadSelected")?.addEventListener("click", () => {
+    void downloadSelectedBooks(visibleBooks);
+  });
+
+  updateSelectionControls(visibleBooks);
 }
 
 function renderCatalogError(error: string): void {
@@ -245,6 +287,30 @@ function renderResultSummary(activeFilterCount: number, total: number): string {
     : `共 ${total} 本匹配课本。`;
 }
 
+function renderSelectionToolbar(activeFilterCount: number, visibleBooks: BookItem[]): string {
+  if (activeFilterCount === 0 && selection.size === 0) {
+    return "";
+  }
+
+  if (visibleBooks.length === 0 && selection.size === 0) {
+    return "";
+  }
+
+  return `
+    <div class="selection-toolbar" aria-label="批量下载工具栏">
+      <label class="select-visible-label">
+        <input id="selectVisible" type="checkbox" ${batchDownloading ? "disabled" : ""}>
+        <span>全选当前显示</span>
+      </label>
+      <span class="selection-count" id="selectionCount">已选 ${selection.size} 本</span>
+      <div class="selection-actions">
+        <button id="clearSelected" type="button" class="ghost small">清除</button>
+        <button id="downloadSelected" type="button" class="small">下载所选</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderResults(activeFilterCount: number, visibleBooks: BookItem[], total: number): string {
   if (activeFilterCount === 0) {
     return `<div class="empty-state compact">先选择学段、学科或年级。</div>`;
@@ -258,6 +324,22 @@ function renderResults(activeFilterCount: number, visibleBooks: BookItem[], tota
     .map(
       (book) => `
         <article class="result">
+          <input
+            type="checkbox"
+            class="book-checkbox"
+            data-select-content-id="${escapeHtml(book.contentId)}"
+            aria-label="选择 ${escapeHtml(book.title)}"
+            ${selection.has(book.contentId) ? "checked" : ""}
+            ${batchDownloading ? "disabled" : ""}
+          >
+          <div class="book-cover ${book.coverUrl ? "" : "is-missing"}">
+            ${
+              book.coverUrl
+                ? `<img src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)}封面" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+                : ""
+            }
+            <span>暂无封面</span>
+          </div>
           <div class="result-copy">
             <h3>${escapeHtml(book.title)}</h3>
             <p>${escapeHtml(formatBookMeta(book))}</p>
@@ -266,6 +348,7 @@ function renderResults(activeFilterCount: number, visibleBooks: BookItem[], tota
             type="button"
             class="download-book"
             data-content-id="${escapeHtml(book.contentId)}"
+            ${batchDownloading ? "disabled" : ""}
           >
             下载
           </button>
@@ -273,6 +356,72 @@ function renderResults(activeFilterCount: number, visibleBooks: BookItem[], tota
       `
     )
     .join("");
+}
+
+function updateSelectionControls(visibleBooks: BookItem[]): void {
+  const catalogPanel = document.querySelector<HTMLElement>("#catalogPanel");
+  if (!catalogPanel) {
+    return;
+  }
+
+  for (const checkbox of catalogPanel.querySelectorAll<HTMLInputElement>("input[data-select-content-id]")) {
+    const contentId = checkbox.dataset.selectContentId;
+    checkbox.checked = Boolean(contentId && selection.has(contentId));
+    checkbox.disabled = batchDownloading;
+  }
+
+  const visibleIds = visibleBooks.map((book) => book.contentId);
+  const selectedVisible = visibleIds.filter((contentId) => selection.has(contentId)).length;
+  const selectVisible = catalogPanel.querySelector<HTMLInputElement>("#selectVisible");
+  if (selectVisible) {
+    selectVisible.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+    selectVisible.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+    selectVisible.disabled = batchDownloading || visibleIds.length === 0;
+  }
+
+  const selectionCount = catalogPanel.querySelector<HTMLElement>("#selectionCount");
+  if (selectionCount) {
+    selectionCount.textContent = `已选 ${selection.size} 本`;
+  }
+
+  const clearButton = catalogPanel.querySelector<HTMLButtonElement>("#clearSelected");
+  if (clearButton) {
+    clearButton.disabled = batchDownloading || selection.size === 0;
+  }
+
+  const downloadButton = catalogPanel.querySelector<HTMLButtonElement>("#downloadSelected");
+  if (downloadButton) {
+    downloadButton.disabled = batchDownloading || selection.size === 0;
+    downloadButton.textContent = batchDownloading ? "处理中..." : `下载所选 (${selection.size})`;
+  }
+
+  for (const button of catalogPanel.querySelectorAll<HTMLButtonElement>(".download-book")) {
+    button.disabled = batchDownloading;
+  }
+
+  for (const select of catalogPanel.querySelectorAll<HTMLSelectElement>("select[data-filter]")) {
+    select.disabled = batchDownloading;
+  }
+
+  const reloadButton = catalogPanel.querySelector<HTMLButtonElement>("#reloadCatalog");
+  if (reloadButton) {
+    reloadButton.disabled = batchDownloading;
+  }
+
+  for (const image of catalogPanel.querySelectorAll<HTMLImageElement>(".book-cover img")) {
+    if (image.dataset.errorBound === "true") {
+      continue;
+    }
+    image.dataset.errorBound = "true";
+    image.addEventListener(
+      "error",
+      () => {
+        image.hidden = true;
+        image.parentElement?.classList.add("is-missing");
+      },
+      { once: true }
+    );
+  }
 }
 
 async function downloadCurrentTab(): Promise<void> {
@@ -333,9 +482,74 @@ async function downloadBook(book: BookItem, button: HTMLButtonElement): Promise<
   }
 }
 
+async function downloadSelectedBooks(visibleBooks: BookItem[]): Promise<void> {
+  const selectedBooks = books.filter((book) => selection.has(book.contentId));
+  if (selectedBooks.length === 0 || batchDownloading) {
+    return;
+  }
+
+  batchDownloading = true;
+  updateSelectionControls(visibleBooks);
+  const jobId = crypto.randomUUID();
+
+  const progressListener = (message: BatchDownloadProgressMessage): void => {
+    if (message.type !== "batchDownloadProgress" || message.jobId !== jobId) {
+      return;
+    }
+
+    setMessage(
+      `正在处理 ${message.completed}/${message.total}：已开始 ${message.succeeded} 本，失败 ${message.failed} 本。`
+    );
+  };
+  chrome.runtime.onMessage.addListener(progressListener);
+
+  try {
+    setMessage(`正在处理 ${selectedBooks.length} 本课本...`);
+    const response = (await chrome.runtime.sendMessage({
+      type: "downloadResources",
+      jobId,
+      resources: selectedBooks.map((book) => ({
+        contentId: book.contentId,
+        contentType: book.contentType
+      }))
+    })) as DownloadResourcesResponse;
+
+    if (!response.ok) {
+      throw new Error(response.error ?? "批量下载失败。");
+    }
+
+    const results = response.results ?? [];
+    const succeeded = results.filter((result) => result.ok);
+    const failed = results.filter((result) => !result.ok);
+    selection.deleteMany(succeeded.map((result) => result.contentId));
+
+    if (failed.length === 0) {
+      setMessage(`已开始下载 ${succeeded.length} 本课本。`);
+    } else {
+      const firstFailed = books.find((book) => book.contentId === failed[0].contentId);
+      setMessage(
+        `已开始 ${succeeded.length} 本，失败 ${failed.length} 本。${firstFailed ? `首个失败：${firstFailed.title}` : "失败项已保留，可重试。"}`
+      );
+    }
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : String(error));
+  } finally {
+    chrome.runtime.onMessage.removeListener(progressListener);
+    batchDownloading = false;
+    renderCatalogBrowser();
+  }
+}
+
 async function getTokenStatus(): Promise<TokenStatusResponse> {
   return (await chrome.runtime.sendMessage({
     type: "getTokenStatus"
+  })) as TokenStatusResponse;
+}
+
+async function recoverToken(): Promise<TokenStatusResponse> {
+  tokenStatus.textContent = "正在同步智慧教育平台登录状态...";
+  return (await chrome.runtime.sendMessage({
+    type: "recoverToken"
   })) as TokenStatusResponse;
 }
 

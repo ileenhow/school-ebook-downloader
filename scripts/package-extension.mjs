@@ -20,6 +20,8 @@ if (packageJson.version !== manifest.version) {
   );
 }
 
+validateContentScripts(manifest);
+
 mkdirSync(releaseDir, { recursive: true });
 
 const zipName = `${packageJson.name}-v${packageJson.version}.zip`;
@@ -47,4 +49,20 @@ console.log(zipPath);
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function validateContentScripts(manifest) {
+  for (const scriptPath of manifest.content_scripts?.flatMap((entry) => entry.js ?? []) ?? []) {
+    const absolutePath = resolve(distDir, scriptPath);
+    if (!existsSync(absolutePath)) {
+      throw new Error(`Manifest 内容脚本不存在：${scriptPath}`);
+    }
+
+    const source = readFileSync(absolutePath, "utf8");
+    if (/^\s*import\b/mu.test(source)) {
+      throw new Error(
+        `Manifest 内容脚本不能包含顶层 ESM import，请改为单文件 bundle：${scriptPath}`
+      );
+    }
+  }
 }

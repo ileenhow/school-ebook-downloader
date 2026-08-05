@@ -19,7 +19,7 @@ if (!authWindow[CAPTURE_FLAG]) {
 
 async function captureTokenWhenAvailable(): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const token = readAccessTokenFromLocalStorage();
+    const token = readAuthPageAccessToken();
 
     if (token) {
       await chrome.runtime.sendMessage({
@@ -34,7 +34,7 @@ async function captureTokenWhenAvailable(): Promise<void> {
   }
 }
 
-function readAccessTokenFromLocalStorage(): string | undefined {
+function readAuthPageAccessToken(): string | undefined {
   try {
     const authKey = Object.keys(localStorage).find((key) => key.startsWith(AUTH_KEY_PREFIX));
     if (!authKey) {
@@ -46,13 +46,15 @@ function readAccessTokenFromLocalStorage(): string | undefined {
       return undefined;
     }
 
-    const tokenData = JSON.parse(tokenDataRaw) as { value?: string };
-    if (!tokenData.value) {
+    const tokenData = JSON.parse(tokenDataRaw) as { value?: unknown };
+    if (typeof tokenData.value !== "string") {
       return undefined;
     }
 
-    const value = JSON.parse(tokenData.value) as { access_token?: string };
-    return value.access_token;
+    const value = JSON.parse(tokenData.value) as { access_token?: unknown };
+    return typeof value.access_token === "string" && value.access_token.trim()
+      ? value.access_token
+      : undefined;
   } catch {
     return undefined;
   }

@@ -1,14 +1,26 @@
-import type { BookItem, CatalogFetchResult } from "../shared/catalog";
 import {
   fetchCatalogVersion,
   fetchSmartEduCatalog
 } from "../shared/catalog";
+import {
+  CATALOG_CACHE_KEY,
+  CATALOG_CACHE_SCHEMA_VERSION,
+  LEGACY_CATALOG_CACHE_KEY,
+  isCatalogCache,
+  type CatalogCache
+} from "../shared/catalog-cache";
+import { runConcurrentBatch } from "../shared/batch";
 import type {
+  BatchDownloadProgressMessage,
+  BatchDownloadResource,
+  BatchDownloadResult,
   CatalogResponse,
   DownloadCurrentPageResponse,
+  DownloadResourcesResponse,
   ExtensionRequest,
   ExtensionResponse,
-  TokenStatusChangedMessage
+  TokenStatusChangedMessage,
+  TokenStatusResponse
 } from "../shared/messages";
 import {
   clearAccessToken,
@@ -23,13 +35,12 @@ import {
 } from "../shared/smartedu";
 
 const LOGIN_URL = "https://auth.smartedu.cn/uias/login";
-const CATALOG_CACHE_KEY = "smarteduCatalogCache";
-
-type CatalogCache = CatalogFetchResult & {
-  updatedAt: string;
-};
+const BATCH_DOWNLOAD_CONCURRENCY = 3;
+const TOKEN_RECOVERY_ATTEMPTS = 50;
+const TOKEN_RECOVERY_INTERVAL_MS = 100;
 
 let memoryCatalog: CatalogCache | undefined;
+let tokenRecovery: Promise<TokenStatusResponse> | undefined;
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendResponse) => {
   handleRequest(request)
@@ -52,9 +63,12 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
     case "downloadResource":
       return downloadResource(request.contentId, request.contentType);
 
+    case "downloadResources":
+      return downloadResources(request.jobId, request.resources);
+
     case "saveToken":
       await saveAccessToken(request.token);
-      await notifyDetailPagesTokenStatus();
+      await notifyMaterialPagesTokenStatus();
       return { ok: true };
 
     case "getTokenStatus": {
@@ -62,9 +76,12 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
       return { ok: true, ...status };
     }
 
+    case "recoverToken":
+      return recoverAccessToken();
+
     case "clearToken":
       await clearAccessToken();
-      await notifyDetailPagesTokenStatus();
+      await notifyMaterialPagesTokenStatus();
       return { ok: true };
 
     case "openLoginPage":
@@ -74,6 +91,130 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
     case "getCatalog":
       return getCatalog();
   }
+}
+
+async function recoverAccessToken(): Promise<TokenStatusResponse> {
+  const current = await getTokenStatus();
+  if (current.hasToken) {
+    return { ok: true, ...current };
+  }
+
+  if (!tokenRecovery) {
+    tokenRecovery = runTokenRecovery().finally(() => {
+      tokenRecovery = undefined;
+    });
+  }
+
+  return tokenRecovery;
+}
+
+async function runTokenRecovery(): Promise<TokenStatusResponse> {
+  const recoveryTab = await chrome.tabs.create({ url: LOGIN_URL, active: false });
+
+  try {
+    for (let attempt = 0; attempt < TOKEN_RECOVERY_ATTEMPTS; attempt += 1) {
+      await wait(TOKEN_RECOVERY_INTERVAL_MS);
+      const status = await getTokenStatus();
+      if (status.hasToken) {
+        return { ok: true, ...status };
+      }
+    }
+
+    return { ok: true, ...(await getTokenStatus()) };
+  } finally {
+    if (recoveryTab.id !== undefined) {
+      try {
+        await chrome.tabs.remove(recoveryTab.id);
+      } catch {
+        // The user or the authentication flow may already have closed the tab.
+      }
+    }
+  }
+}
+
+async function downloadResources(
+  jobId: string,
+  requestedResources: BatchDownloadResource[]
+): Promise<DownloadResourcesResponse> {
+  let accessToken: string;
+  try {
+    accessToken = await requireAccessToken();
+  } catch (error) {
+    return { ok: false, jobId, error: formatError(error) };
+  }
+
+  const resources = dedupeResources(requestedResources);
+  let succeeded = 0;
+  let failed = 0;
+  const settled = await runConcurrentBatch(
+    resources,
+    BATCH_DOWNLOAD_CONCURRENCY,
+    async (resource): Promise<BatchDownloadResult> => {
+      const parsed = await parseSmartEduResourceFromParams(
+        {
+          contentId: resource.contentId,
+          contentType: resource.contentType || "assets_document"
+        },
+        accessToken
+      );
+      const response = await startDownload(parsed, accessToken);
+      return {
+        contentId: resource.contentId,
+        ok: true,
+        title: response.title,
+        filename: response.filename,
+        downloadId: response.downloadId
+      };
+    },
+    async ({ completed, total, result }) => {
+      if (result.status === "fulfilled") {
+        succeeded += 1;
+      } else {
+        failed += 1;
+      }
+
+      const progress: BatchDownloadProgressMessage = {
+        type: "batchDownloadProgress",
+        jobId,
+        completed,
+        total,
+        succeeded,
+        failed
+      };
+      try {
+        await chrome.runtime.sendMessage(progress);
+      } catch {
+        // The popup may have been closed while the background queue continues.
+      }
+    }
+  );
+
+  const results = settled.map((result, index): BatchDownloadResult => {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+
+    return {
+      contentId: resources[index].contentId,
+      ok: false,
+      error: formatError(result.reason)
+    };
+  });
+
+  return { ok: true, jobId, results };
+}
+
+function dedupeResources(resources: BatchDownloadResource[]): BatchDownloadResource[] {
+  const seen = new Set<string>();
+  return resources.filter((resource) => {
+    const contentId = resource.contentId.trim();
+    if (!contentId || seen.has(contentId)) {
+      return false;
+    }
+
+    seen.add(contentId);
+    return true;
+  });
 }
 
 async function downloadCurrentPage(pageUrl: string): Promise<DownloadCurrentPageResponse> {
@@ -142,6 +283,7 @@ async function getCatalog(): Promise<CatalogResponse> {
     const fresh = await fetchSmartEduCatalog(version);
     const nextCache: CatalogCache = {
       ...fresh,
+      schemaVersion: CATALOG_CACHE_SCHEMA_VERSION,
       updatedAt: new Date().toISOString()
     };
 
@@ -167,7 +309,10 @@ async function readCachedCatalog(): Promise<CatalogCache | undefined> {
     return memoryCatalog;
   }
 
-  const result = await chrome.storage.local.get(CATALOG_CACHE_KEY);
+  const result = await chrome.storage.local.get([CATALOG_CACHE_KEY, LEGACY_CATALOG_CACHE_KEY]);
+  if (result[LEGACY_CATALOG_CACHE_KEY] !== undefined) {
+    await chrome.storage.local.remove(LEGACY_CATALOG_CACHE_KEY);
+  }
   const candidate = result[CATALOG_CACHE_KEY];
 
   if (isCatalogCache(candidate)) {
@@ -192,14 +337,14 @@ function toCatalogResponse(cache: CatalogCache, fromCache: boolean): CatalogResp
   };
 }
 
-async function notifyDetailPagesTokenStatus(): Promise<void> {
+async function notifyMaterialPagesTokenStatus(): Promise<void> {
   const status = await getTokenStatus();
   const message: TokenStatusChangedMessage = {
     type: "tokenStatusChanged",
     ...status
   };
   const tabs = await chrome.tabs.query({
-    url: "https://basic.smartedu.cn/tchMaterial/detail*"
+    url: "https://basic.smartedu.cn/tchMaterial*"
   });
 
   await Promise.all(
@@ -211,7 +356,7 @@ async function notifyDetailPagesTokenStatus(): Promise<void> {
       try {
         await chrome.tabs.sendMessage(tab.id, message);
       } catch {
-        // The tab may not have the content script yet. onUpdated/static injection will cover normal loads.
+        // The tab may not have the content script yet; static injection covers normal loads.
       }
     })
   );
@@ -221,33 +366,12 @@ function buildAuthHeader(accessToken: string): string {
   return `MAC id="${accessToken}",nonce="0",mac="0"`;
 }
 
-function isCatalogCache(value: unknown): value is CatalogCache {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const cache = value as Partial<CatalogCache>;
-  return (
-    typeof cache.moduleVersion === "string" &&
-    typeof cache.updatedAt === "string" &&
-    Array.isArray(cache.books) &&
-    cache.books.every(isBookItem)
-  );
-}
-
-function isBookItem(value: unknown): value is BookItem {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const book = value as Partial<BookItem>;
-  return (
-    typeof book.contentId === "string" &&
-    typeof book.contentType === "string" &&
-    typeof book.title === "string"
-  );
-}
-
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

@@ -3,10 +3,14 @@ import type {
   TokenStatusChangedMessage,
   TokenStatusResponse
 } from "../shared/messages";
+import { readSmartEduAccessToken } from "../shared/auth-token";
+import { CatalogPageController } from "./catalog-page";
 
 (() => {
 const ROOT_ID = "school-ebook-downloader-root";
 const LISTENER_FLAG = "__schoolEbookDownloaderTokenListener";
+const DETAIL_PATH = "/tchMaterial/detail";
+const CATALOG_PATHS = new Set(["/tchMaterial", "/tchMaterial/", "/tchMaterial/dzjc/catalog"]);
 
 type ContentWindow = Window &
   typeof globalThis & {
@@ -17,6 +21,8 @@ type PanelElements = {
   shadow: ShadowRoot;
 };
 
+let catalogPageController: CatalogPageController | undefined;
+
 void renderFromTokenStatus();
 
 const contentWindow = window as ContentWindow;
@@ -24,21 +30,65 @@ if (!contentWindow[LISTENER_FLAG]) {
   contentWindow[LISTENER_FLAG] = true;
   chrome.runtime.onMessage.addListener((message: TokenStatusChangedMessage) => {
     if (message.type === "tokenStatusChanged") {
-      renderPanel(message.hasToken);
+      renderForCurrentPage(message.hasToken);
     }
   });
 }
 
 async function renderFromTokenStatus(): Promise<void> {
   try {
-    const status = (await chrome.runtime.sendMessage({
+    let status = (await chrome.runtime.sendMessage({
       type: "getTokenStatus"
     })) as TokenStatusResponse;
 
-    renderPanel(status.ok && status.hasToken);
+    if (status.ok && !status.hasToken) {
+      const pageToken = readSmartEduAccessToken(localStorage);
+      if (pageToken) {
+        await chrome.runtime.sendMessage({
+          type: "saveToken",
+          token: pageToken,
+          source: "basic-page"
+        });
+        status = (await chrome.runtime.sendMessage({
+          type: "getTokenStatus"
+        })) as TokenStatusResponse;
+      } else {
+        status = (await chrome.runtime.sendMessage({
+          type: "recoverToken"
+        })) as TokenStatusResponse;
+      }
+    }
+
+    renderForCurrentPage(status.ok && status.hasToken);
   } catch {
-    renderPanel(false);
+    renderForCurrentPage(false);
   }
+}
+
+function renderForCurrentPage(hasToken: boolean): void {
+  if (window.location.pathname === DETAIL_PATH) {
+    catalogPageController?.destroy();
+    catalogPageController = undefined;
+    renderPanel(hasToken);
+    return;
+  }
+
+  removeDetailPanel();
+  if (!CATALOG_PATHS.has(window.location.pathname)) {
+    catalogPageController?.destroy();
+    catalogPageController = undefined;
+    return;
+  }
+
+  if (!catalogPageController) {
+    catalogPageController = new CatalogPageController(document, (message) =>
+      chrome.runtime.sendMessage(message)
+    );
+    void catalogPageController.start(hasToken);
+    return;
+  }
+
+  void catalogPageController.setHasToken(hasToken);
 }
 
 function renderPanel(hasToken: boolean): void {
@@ -143,6 +193,10 @@ function ensureRoot(): PanelElements {
   document.documentElement.append(host);
 
   return { shadow };
+}
+
+function removeDetailPanel(): void {
+  document.getElementById(ROOT_ID)?.remove();
 }
 
 async function downloadCurrentPage(

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "__MSG_extensionDescription__",
   "default_locale": "zh_CN",
   "permissions": ["activeTab", "downloads", "storage"],
@@ -21,14 +21,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://basic.smartedu.cn/tchMaterial/detail*"],
+      "matches": ["https://basic.smartedu.cn/tchMaterial*"],
       "js": ["assets/content.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://auth.smartedu.cn/*"],
       "js": ["assets/auth.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ]
 }

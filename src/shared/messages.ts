@@ -11,14 +11,29 @@ export type DownloadResourceRequest = {
   contentType: string;
 };
 
+export type BatchDownloadResource = {
+  contentId: string;
+  contentType: string;
+};
+
+export type DownloadResourcesRequest = {
+  type: "downloadResources";
+  jobId: string;
+  resources: BatchDownloadResource[];
+};
+
 export type SaveTokenRequest = {
   type: "saveToken";
   token: string;
-  source: "auth-page" | "manual";
+  source: "auth-page" | "basic-page" | "manual";
 };
 
 export type GetTokenStatusRequest = {
   type: "getTokenStatus";
+};
+
+export type RecoverTokenRequest = {
+  type: "recoverToken";
 };
 
 export type ClearTokenRequest = {
@@ -36,8 +51,10 @@ export type GetCatalogRequest = {
 export type ExtensionRequest =
   | DownloadCurrentPageRequest
   | DownloadResourceRequest
+  | DownloadResourcesRequest
   | SaveTokenRequest
   | GetTokenStatusRequest
+  | RecoverTokenRequest
   | ClearTokenRequest
   | OpenLoginPageRequest
   | GetCatalogRequest;
@@ -51,6 +68,31 @@ export type DownloadCurrentPageResponse = {
 };
 
 export type DownloadResourceResponse = DownloadCurrentPageResponse;
+
+export type BatchDownloadResult = {
+  contentId: string;
+  ok: boolean;
+  title?: string;
+  filename?: string;
+  downloadId?: number;
+  error?: string;
+};
+
+export type DownloadResourcesResponse = {
+  ok: boolean;
+  jobId: string;
+  results?: BatchDownloadResult[];
+  error?: string;
+};
+
+export type BatchDownloadProgressMessage = {
+  type: "batchDownloadProgress";
+  jobId: string;
+  completed: number;
+  total: number;
+  succeeded: number;
+  failed: number;
+};
 
 export type TokenStatusResponse = {
   ok: boolean;
@@ -75,6 +117,7 @@ export type TokenStatusChangedMessage = {
 export type ExtensionResponse =
   | DownloadCurrentPageResponse
   | DownloadResourceResponse
+  | DownloadResourcesResponse
   | TokenStatusResponse
   | CatalogResponse
   | { ok: boolean; error?: string };

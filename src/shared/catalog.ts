@@ -2,6 +2,7 @@ export type BookItem = {
   contentId: string;
   contentType: string;
   title: string;
+  coverUrl?: string;
   stage?: string;
   subject?: string;
   grade?: string;
@@ -35,7 +36,7 @@ type SmartEduTagsResponse = {
 };
 
 type SmartEduVersionResponse = {
-  module_version?: string;
+  module_version?: string | number;
   urls?: string | string[];
 };
 
@@ -45,6 +46,9 @@ type SmartEduBookResource = {
   name?: string;
   resource_type_code?: string;
   tag_paths?: string[];
+  custom_properties?: {
+    thumbnails?: unknown[];
+  };
 };
 
 type TagInfo = {
@@ -55,6 +59,7 @@ type TagInfo = {
 const TAGS_ENDPOINT = "https://s-file-1.ykt.cbern.com.cn/zxx/ndrs/tags/tch_material_tag.json";
 const VERSION_ENDPOINT =
   "https://s-file-1.ykt.cbern.com.cn/zxx/ndrs/resources/tch_material/version/data_version.json";
+const TRUSTED_ASSET_DOMAIN = "ykt.cbern.com.cn";
 
 const DIMENSION_TO_FIELD: Record<string, keyof Pick<BookItem, "stage" | "subject" | "publisher" | "grade" | "volume">> =
   {
@@ -74,7 +79,7 @@ export async function fetchCatalogVersion(): Promise<CatalogVersion> {
   }
 
   return {
-    moduleVersion: data.module_version ?? urls.join(","),
+    moduleVersion: String(data.module_version ?? urls.join(",")),
     urls
   };
 }
@@ -134,6 +139,10 @@ function toBookItem(book: SmartEduBookResource, tagMap: Map<string, TagInfo>): B
     contentType: book.resource_type_code ?? "assets_document",
     title
   };
+  const coverUrl = normalizeTrustedCatalogAssetUrl(book.custom_properties?.thumbnails?.[0]);
+  if (coverUrl) {
+    item.coverUrl = coverUrl;
+  }
 
   const tagIds = book.tag_paths?.[0]?.split("/").filter(Boolean) ?? [];
   for (const tagId of tagIds) {
@@ -151,6 +160,36 @@ function toBookItem(book: SmartEduBookResource, tagMap: Map<string, TagInfo>): B
   item.volume ??= parseVolumeFromTitle(title);
 
   return item;
+}
+
+export function normalizeTrustedCatalogAssetUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const isTrustedHostname =
+    hostname === TRUSTED_ASSET_DOMAIN || hostname.endsWith(`.${TRUSTED_ASSET_DOMAIN}`);
+  const usesDefaultHttpsPort = url.port === "" || url.port === "443";
+
+  if (
+    url.protocol !== "https:" ||
+    !usesDefaultHttpsPort ||
+    url.username !== "" ||
+    url.password !== "" ||
+    !isTrustedHostname
+  ) {
+    return undefined;
+  }
+
+  return url.href;
 }
 
 function parseVolumeFromTitle(title: string): string | undefined {
