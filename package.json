@@ -17,6 +17,7 @@
     "test": "vitest run",
     "zip": "node scripts/package-extension.mjs",
     "release:build": "pnpm typecheck && pnpm test && pnpm build && pnpm security:check && pnpm zip",
+    "release:version": "node scripts/release-version.mjs",
     "security:check": "node scripts/validate-extension-security.mjs",
     "cws:check": "node scripts/chrome-web-store-publish.mjs --check",
     "cws:upload": "node scripts/chrome-web-store-publish.mjs --no-publish",
