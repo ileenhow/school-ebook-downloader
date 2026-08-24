@@ -5,17 +5,6 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      publish_chrome:
-        description: "Publish the build to Chrome Web Store."
-        required: true
-        default: false
-        type: boolean
-      publish_edge:
-        description: "Publish the build to Microsoft Edge Add-ons."
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -87,7 +76,6 @@ jobs:
   publish-chrome:
     name: Publish to Chrome Web Store
     needs: build
-    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_chrome) }}
     runs-on: ubuntu-latest
     environment:
       name: chrome-web-store
@@ -124,7 +112,6 @@ jobs:
   publish-edge:
     name: Publish to Microsoft Edge Add-ons
     needs: build
-    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_edge) }}
     runs-on: ubuntu-latest
     environment:
       name: edge-addons
