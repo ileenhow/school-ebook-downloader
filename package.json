@@ -21,6 +21,8 @@
     "cws:check": "node scripts/chrome-web-store-publish.mjs --check",
     "cws:upload": "node scripts/chrome-web-store-publish.mjs --no-publish",
     "cws:publish": "node scripts/chrome-web-store-publish.mjs",
+    "edge:upload": "node scripts/edge-addons-publish.mjs --no-publish",
+    "edge:publish": "node scripts/edge-addons-publish.mjs",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
