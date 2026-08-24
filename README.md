@@ -74,14 +74,9 @@ pnpm release:build
 - 上传 workflow artifact
 - 创建 GitHub Release 并附加 zip
 
-构建完成后，同一次 workflow 的流程图中会显示 Chrome Web Store 和 Microsoft Edge Add-ons 两个发布节点。两个节点分别受 `chrome-web-store` 和 `edge-addons` Environment 保护，状态为 `Waiting`；只有 required reviewer 在 workflow 页面点击 `Review deployments` 并批准对应环境后，发布节点才会开始执行。
+构建完成后，同一次 workflow 的流程图中会固定显示 Chrome Web Store 和 Microsoft Edge Add-ons 两个发布节点。两个节点分别受 `chrome-web-store` 和 `edge-addons` Environment 保护，状态为 `Waiting`；只有 required reviewer 在 workflow 页面点击 `Review deployments` 并批准对应环境后，发布节点才会开始执行。
 
-tag 触发时两个发布节点都会进入等待审批状态。手动运行 `Actions > Release > Run workflow` 时，可先选择本次需要显示的发布节点：
-
-- `publish_chrome`：发布到 Chrome Web Store。
-- `publish_edge`：发布到 Microsoft Edge Add-ons。
-
-每次 workflow 只构建一次，选中的商店发布 job 会下载并复用同一个构建产物。两个发布节点独立审批、独立执行；任一商店失败不会阻止另一个已批准的商店尝试发布。两个选项均不启用时只验证构建，不显示发布节点。
+无论通过 tag 还是 `Actions > Release > Run workflow` 手动触发，都不需要在运行前选择发布目标。每次 workflow 只构建一次，两个发布 job 下载并复用同一个构建产物。Chrome 和 Edge 可以分别审批、分别执行；只批准其中一个时，另一个会继续保持等待状态。
 
 Chrome Web Store 发布需要在 GitHub 仓库 secrets 中配置：
 
