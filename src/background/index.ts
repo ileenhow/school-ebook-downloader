@@ -91,7 +91,7 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
       return { ok: true };
 
     case "getCatalog":
-      return getCatalog();
+      return getCatalog(request.forceRefresh);
   }
 }
 
@@ -269,8 +269,11 @@ async function requireCredential(): Promise<SmartEduCredential> {
   return credential;
 }
 
-async function getCatalog(): Promise<CatalogResponse> {
+async function getCatalog(forceRefresh = false): Promise<CatalogResponse> {
   const cached = await readCachedCatalog();
+  if (cached && !forceRefresh) {
+    return toCatalogResponse(cached, true);
+  }
 
   try {
     const version = await fetchCatalogVersion();

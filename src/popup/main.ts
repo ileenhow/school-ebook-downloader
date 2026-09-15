@@ -12,7 +12,7 @@ import wechatSupportQrUrl from "../assets/wechat-support-qr.png";
 import { BookSelection } from "./selection";
 import "./styles.css";
 
-const MAX_RESULTS = 80;
+const MAX_RESULTS = 30;
 const FILTER_KEYS = ["stage", "subject", "grade", "publisher", "volume"] as const;
 
 type FilterKey = (typeof FILTER_KEYS)[number];
@@ -26,6 +26,7 @@ const FILTER_LABELS: Record<FilterKey, string> = {
 };
 
 let books: BookItem[] = [];
+let booksById = new Map<string, BookItem>();
 let filters = createEmptyFilters();
 let catalogMeta: Pick<CatalogResponse, "updatedAt" | "fromCache" | "error"> = {};
 const selection = new BookSelection();
@@ -39,7 +40,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <span class="badge" id="tokenStatus">正在读取授权</span>
     </header>
 
-    <main id="panel"></main>
+    <main id="panel"><div class="loading">正在读取授权...</div></main>
     <p class="message" id="message" aria-live="polite"></p>
 
     <footer class="support">
@@ -55,19 +56,23 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
             <div class="payment-options">
               <figure class="payment-option">
                 <img
-                  src="${alipaySupportQrUrl}"
+                  data-src="${alipaySupportQrUrl}"
                   alt="支付宝支持开发者二维码"
                   width="164"
                   height="162"
+                  loading="lazy"
+                  decoding="async"
                 >
                 <figcaption>支付宝</figcaption>
               </figure>
               <figure class="payment-option">
                 <img
-                  src="${wechatSupportQrUrl}"
+                  data-src="${wechatSupportQrUrl}"
                   alt="微信支持开发者二维码"
                   width="164"
                   height="165"
+                  loading="lazy"
+                  decoding="async"
                 >
                 <figcaption>微信</figcaption>
               </figure>
@@ -82,8 +87,23 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 const tokenStatus = getElement("#tokenStatus");
 const panel = getElement("#panel");
 const message = getElement("#message");
+const supportDetails = document.querySelector<HTMLDetailsElement>(".support details");
 
-void initialize();
+supportDetails?.addEventListener("toggle", loadSupportImages, { once: true });
+requestAnimationFrame(() => {
+  void initialize();
+});
+
+function loadSupportImages(): void {
+  if (!supportDetails?.open) {
+    return;
+  }
+
+  for (const image of supportDetails.querySelectorAll<HTMLImageElement>("img[data-src]")) {
+    image.src = image.dataset.src ?? "";
+    image.removeAttribute("data-src");
+  }
+}
 
 async function initialize(): Promise<void> {
   setMessage("");
@@ -113,6 +133,7 @@ function renderLoggedOut(status?: TokenStatusResponse): void {
     ? `上次捕获：${formatDate(status.updatedAt)}`
     : "当前会话没有完整的下载授权";
   books = [];
+  booksById.clear();
   filters = createEmptyFilters();
   catalogMeta = {};
   selection.clear();
@@ -161,13 +182,14 @@ function renderLoggedIn(status: TokenStatusResponse): void {
   });
 }
 
-async function loadCatalog(): Promise<void> {
+async function loadCatalog(forceRefresh = false): Promise<void> {
   const catalogPanel = getElement("#catalogPanel");
   catalogPanel.innerHTML = `<div class="loading">正在加载教材目录...</div>`;
 
   try {
     const response = (await chrome.runtime.sendMessage({
-      type: "getCatalog"
+      type: "getCatalog",
+      forceRefresh
     })) as CatalogResponse;
 
     if (!response.ok) {
@@ -175,6 +197,7 @@ async function loadCatalog(): Promise<void> {
     }
 
     books = response.books ?? [];
+    booksById = new Map(books.map((book) => [book.contentId, book]));
     selection.retain(books.map((book) => book.contentId));
     catalogMeta = {
       updatedAt: response.updatedAt,
@@ -190,9 +213,7 @@ async function loadCatalog(): Promise<void> {
 
 function renderCatalogBrowser(): void {
   const catalogPanel = getElement("#catalogPanel");
-  const activeFilters = FILTER_KEYS.filter((key) => filters[key]);
-  const matchedBooks = activeFilters.length > 0 ? books.filter((book) => matchesFilters(book)) : [];
-  const visibleBooks = matchedBooks.slice(0, MAX_RESULTS);
+  const { activeFilterCount, matchedBooks, visibleBooks } = getCatalogView();
 
   catalogPanel.innerHTML = `
     <div class="catalog-head">
@@ -209,65 +230,133 @@ function renderCatalogBrowser(): void {
       ${FILTER_KEYS.map(renderFilterSelect).join("")}
     </div>
 
-    <div class="result-summary">${renderResultSummary(activeFilters.length, matchedBooks.length)}</div>
-    ${renderSelectionToolbar(activeFilters.length, visibleBooks)}
+    <div class="result-summary" id="resultSummary">${renderResultSummary(activeFilterCount, matchedBooks.length)}</div>
+    <div id="selectionSlot">${renderSelectionToolbar(activeFilterCount, visibleBooks)}</div>
     <div class="results" id="results">
-      ${renderResults(activeFilters.length, visibleBooks, matchedBooks.length)}
+      ${renderResults(activeFilterCount, visibleBooks, matchedBooks.length)}
     </div>
   `;
 
-  getButton("#reloadCatalog").addEventListener("click", () => {
-    void loadCatalog();
-  });
+  catalogPanel.addEventListener("change", handleCatalogChange);
+  catalogPanel.addEventListener("click", handleCatalogClick);
+  catalogPanel.addEventListener("error", handleCatalogImageError, true);
+  updateSelectionControls(visibleBooks);
+}
+
+function updateCatalogBrowser(): void {
+  const catalogPanel = getElement("#catalogPanel");
+  const { activeFilterCount, matchedBooks, visibleBooks } = getCatalogView();
 
   for (const select of catalogPanel.querySelectorAll<HTMLSelectElement>("select[data-filter]")) {
-    select.addEventListener("change", () => {
-      const key = select.dataset.filter as FilterKey;
-      filters[key] = select.value;
-      filters = normalizeFilters(filters);
-      setMessage("");
-      renderCatalogBrowser();
-    });
+    const key = select.dataset.filter as FilterKey;
+    select.innerHTML = renderFilterOptions(key);
+    select.value = filters[key];
   }
 
-  for (const button of catalogPanel.querySelectorAll<HTMLButtonElement>("button[data-content-id]")) {
-    button.addEventListener("click", () => {
-      const book = books.find((item) => item.contentId === button.dataset.contentId);
-      if (book) {
-        void downloadBook(book, button);
-      }
-    });
+  getElement("#resultSummary").textContent = renderResultSummary(
+    activeFilterCount,
+    matchedBooks.length
+  );
+  getElement("#selectionSlot").innerHTML = renderSelectionToolbar(
+    activeFilterCount,
+    visibleBooks
+  );
+  getElement("#results").innerHTML = renderResults(
+    activeFilterCount,
+    visibleBooks,
+    matchedBooks.length
+  );
+  updateSelectionControls(visibleBooks);
+}
+
+function getCatalogView(): {
+  activeFilterCount: number;
+  matchedBooks: BookItem[];
+  visibleBooks: BookItem[];
+} {
+  const activeFilterCount = FILTER_KEYS.filter((key) => filters[key]).length;
+  const matchedBooks = activeFilterCount > 0
+    ? books.filter((book) => matchesFilters(book))
+    : [];
+
+  return {
+    activeFilterCount,
+    matchedBooks,
+    visibleBooks: matchedBooks.slice(0, MAX_RESULTS)
+  };
+}
+
+function handleCatalogChange(event: Event): void {
+  const target = event.target;
+  if (target instanceof HTMLSelectElement && target.dataset.filter) {
+    const key = target.dataset.filter as FilterKey;
+    filters[key] = target.value;
+    filters = normalizeFilters(filters);
+    setMessage("");
+    updateCatalogBrowser();
+    return;
   }
 
-  for (const checkbox of catalogPanel.querySelectorAll<HTMLInputElement>("input[data-select-content-id]")) {
-    checkbox.addEventListener("change", () => {
-      const contentId = checkbox.dataset.selectContentId;
-      if (contentId) {
-        selection.set(contentId, checkbox.checked);
-        updateSelectionControls(visibleBooks);
-      }
-    });
+  if (!(target instanceof HTMLInputElement)) {
+    return;
   }
 
-  const selectVisible = catalogPanel.querySelector<HTMLInputElement>("#selectVisible");
-  selectVisible?.addEventListener("change", () => {
+  const visibleBooks = getCatalogView().visibleBooks;
+  if (target.id === "selectVisible") {
     selection.setMany(
       visibleBooks.map((book) => book.contentId),
-      selectVisible.checked
+      target.checked
     );
-    updateSelectionControls(visibleBooks);
-  });
-
-  catalogPanel.querySelector<HTMLButtonElement>("#clearSelected")?.addEventListener("click", () => {
-    selection.clear();
-    updateSelectionControls(visibleBooks);
-  });
-
-  catalogPanel.querySelector<HTMLButtonElement>("#downloadSelected")?.addEventListener("click", () => {
-    void downloadSelectedBooks(visibleBooks);
-  });
+  } else if (target.dataset.selectContentId) {
+    selection.set(target.dataset.selectContentId, target.checked);
+  } else {
+    return;
+  }
 
   updateSelectionControls(visibleBooks);
+}
+
+function handleCatalogClick(event: MouseEvent): void {
+  const target = event.target;
+  const button = target instanceof Element
+    ? target.closest<HTMLButtonElement>("button")
+    : undefined;
+  if (!button) {
+    return;
+  }
+
+  if (button.id === "reloadCatalog") {
+    void loadCatalog(true);
+    return;
+  }
+
+  const visibleBooks = getCatalogView().visibleBooks;
+  if (button.id === "clearSelected") {
+    selection.clear();
+    updateSelectionControls(visibleBooks);
+    return;
+  }
+
+  if (button.id === "downloadSelected") {
+    void downloadSelectedBooks(visibleBooks);
+    return;
+  }
+
+  const contentId = button.dataset.contentId;
+  const book = contentId ? booksById.get(contentId) : undefined;
+  if (book) {
+    void downloadBook(book, button);
+  }
+}
+
+function handleCatalogImageError(event: Event): void {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.matches(".book-cover img")) {
+    return;
+  }
+
+  image.hidden = true;
+  image.parentElement?.classList.add("is-missing");
 }
 
 function renderCatalogError(error: string): void {
@@ -286,25 +375,26 @@ function renderCatalogError(error: string): void {
 }
 
 function renderFilterSelect(key: FilterKey): string {
-  const options = getOptionsFor(key);
-  const selectedValue = filters[key];
-
   return `
     <label class="filter">
       <span>${FILTER_LABELS[key]}</span>
       <select data-filter="${key}">
-        <option value="">全部</option>
-        ${options
-          .map(
-            (option) =>
-              `<option value="${escapeHtml(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHtml(
-                option
-              )}</option>`
-          )
-          .join("")}
+        ${renderFilterOptions(key)}
       </select>
     </label>
   `;
+}
+
+function renderFilterOptions(key: FilterKey): string {
+  const selectedValue = filters[key];
+  const options = getOptionsForWithFilters(key, filters)
+    .map(
+      (option) =>
+        `<option value="${escapeHtml(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHtml(option)}</option>`
+    )
+    .join("");
+
+  return `<option value="">全部</option>${options}`;
 }
 
 function renderResultSummary(activeFilterCount: number, total: number): string {
@@ -442,20 +532,6 @@ function updateSelectionControls(visibleBooks: BookItem[]): void {
     reloadButton.disabled = batchDownloading;
   }
 
-  for (const image of catalogPanel.querySelectorAll<HTMLImageElement>(".book-cover img")) {
-    if (image.dataset.errorBound === "true") {
-      continue;
-    }
-    image.dataset.errorBound = "true";
-    image.addEventListener(
-      "error",
-      () => {
-        image.hidden = true;
-        image.parentElement?.classList.add("is-missing");
-      },
-      { once: true }
-    );
-  }
 }
 
 async function downloadCurrentTab(): Promise<void> {
@@ -570,7 +646,7 @@ async function downloadSelectedBooks(visibleBooks: BookItem[]): Promise<void> {
   } finally {
     chrome.runtime.onMessage.removeListener(progressListener);
     batchDownloading = false;
-    renderCatalogBrowser();
+    updateCatalogBrowser();
   }
 }
 
@@ -596,33 +672,6 @@ async function clearSavedToken(): Promise<void> {
   await chrome.runtime.sendMessage({ type: "clearToken" });
   setMessage("已清除当前会话中的下载授权。");
   renderLoggedOut();
-}
-
-function getOptionsFor(key: FilterKey): string[] {
-  const scopedBooks = books.filter((book) => {
-    return FILTER_KEYS.every((filterKey) => {
-      if (filterKey === key) {
-        return true;
-      }
-
-      const selectedValue = filters[filterKey];
-      return !selectedValue || getBookFilterValue(book, filterKey) === selectedValue;
-    });
-  });
-  const seen = new Set<string>();
-  const options: string[] = [];
-
-  for (const book of scopedBooks) {
-    const value = getBookFilterValue(book, key);
-    if (!value || seen.has(value)) {
-      continue;
-    }
-
-    seen.add(value);
-    options.push(value);
-  }
-
-  return options;
 }
 
 function normalizeFilters(nextFilters: Record<FilterKey, string>): Record<FilterKey, string> {

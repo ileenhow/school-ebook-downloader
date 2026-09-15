@@ -47,6 +47,7 @@ export type OpenLoginPageRequest = {
 
 export type GetCatalogRequest = {
   type: "getCatalog";
+  forceRefresh?: boolean;
 };
 
 export type ExtensionRequest =
