@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "__MSG_extensionDescription__",
   "default_locale": "zh_CN",
   "permissions": ["activeTab", "downloads", "storage"],
@@ -27,7 +27,7 @@
     },
     {
       "matches": ["https://auth.smartedu.cn/*"],
-      "js": ["assets/auth.js"],
+      "js": ["assets/content.js"],
       "run_at": "document_start"
     }
   ]

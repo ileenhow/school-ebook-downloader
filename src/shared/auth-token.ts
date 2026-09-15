@@ -1,27 +1,38 @@
-const AUTH_KEY_PREFIX = "ND_UC_AUTH";
+const AUTH_TOKEN_KEY_PATTERN = /^ND_UC_AUTH-[^&]+&[^&]+&token$/u;
 
-export function readSmartEduAccessToken(storage: Storage): string | undefined {
+export type SmartEduCredential = {
+  accessToken: string;
+  macKey: string;
+  clockDiff: number;
+};
+
+export function readSmartEduCredential(storage: Storage): SmartEduCredential | undefined {
   try {
-    const authKey = Object.keys(storage).find((key) => key.startsWith(AUTH_KEY_PREFIX));
-    if (!authKey) {
+    const key = Object.keys(storage).find((candidate) => AUTH_TOKEN_KEY_PATTERN.test(candidate));
+    const raw = key ? storage.getItem(key) : undefined;
+    if (!raw) {
       return undefined;
     }
 
-    const tokenDataRaw = storage.getItem(authKey);
-    if (!tokenDataRaw) {
+    const entry = JSON.parse(raw) as { value?: unknown };
+    if (typeof entry.value !== "string") {
       return undefined;
     }
 
-    const tokenData = JSON.parse(tokenDataRaw) as { value?: unknown };
-    if (typeof tokenData.value !== "string") {
+    const value = JSON.parse(entry.value) as Record<string, unknown>;
+    const accessToken = readString(value.access_token);
+    const macKey = readString(value.mac_key);
+    const clockDiff = Number(value.diff);
+    if (!accessToken || !macKey || !Number.isFinite(clockDiff)) {
       return undefined;
     }
 
-    const value = JSON.parse(tokenData.value) as { access_token?: unknown };
-    return typeof value.access_token === "string" && value.access_token.trim()
-      ? value.access_token
-      : undefined;
+    return { accessToken, macKey, clockDiff };
   } catch {
     return undefined;
   }
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }

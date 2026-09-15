@@ -1,4 +1,5 @@
 import type { BookItem } from "./catalog";
+import type { SmartEduCredential } from "./auth-token";
 
 export type DownloadCurrentPageRequest = {
   type: "downloadCurrentPage";
@@ -22,9 +23,9 @@ export type DownloadResourcesRequest = {
   resources: BatchDownloadResource[];
 };
 
-export type SaveTokenRequest = {
-  type: "saveToken";
-  token: string;
+export type SaveCredentialRequest = {
+  type: "saveCredential";
+  credential: SmartEduCredential;
   source: "auth-page" | "basic-page" | "manual";
 };
 
@@ -52,7 +53,7 @@ export type ExtensionRequest =
   | DownloadCurrentPageRequest
   | DownloadResourceRequest
   | DownloadResourcesRequest
-  | SaveTokenRequest
+  | SaveCredentialRequest
   | GetTokenStatusRequest
   | RecoverTokenRequest
   | ClearTokenRequest

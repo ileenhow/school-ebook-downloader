@@ -3,10 +3,16 @@ import type {
   TokenStatusChangedMessage,
   TokenStatusResponse
 } from "../shared/messages";
-import { readSmartEduAccessToken } from "../shared/auth-token";
+import { readSmartEduCredential } from "../shared/auth-token";
 import { CatalogPageController } from "./catalog-page";
+import { startAuthCredentialCapture } from "./auth";
 
 (() => {
+if (window.location.hostname === "auth.smartedu.cn") {
+  startAuthCredentialCapture();
+  return;
+}
+
 const ROOT_ID = "school-ebook-downloader-root";
 const LISTENER_FLAG = "__schoolEbookDownloaderTokenListener";
 const DETAIL_PATH = "/tchMaterial/detail";
@@ -37,26 +43,23 @@ if (!contentWindow[LISTENER_FLAG]) {
 
 async function renderFromTokenStatus(): Promise<void> {
   try {
+    const pageCredential = readSmartEduCredential(localStorage);
+    if (pageCredential) {
+      await chrome.runtime.sendMessage({
+        type: "saveCredential",
+        credential: pageCredential,
+        source: "basic-page"
+      });
+    }
+
     let status = (await chrome.runtime.sendMessage({
       type: "getTokenStatus"
     })) as TokenStatusResponse;
 
     if (status.ok && !status.hasToken) {
-      const pageToken = readSmartEduAccessToken(localStorage);
-      if (pageToken) {
-        await chrome.runtime.sendMessage({
-          type: "saveToken",
-          token: pageToken,
-          source: "basic-page"
-        });
-        status = (await chrome.runtime.sendMessage({
-          type: "getTokenStatus"
-        })) as TokenStatusResponse;
-      } else {
-        status = (await chrome.runtime.sendMessage({
-          type: "recoverToken"
-        })) as TokenStatusResponse;
-      }
+      status = (await chrome.runtime.sendMessage({
+        type: "recoverToken"
+      })) as TokenStatusResponse;
     }
 
     renderForCurrentPage(status.ok && status.hasToken);

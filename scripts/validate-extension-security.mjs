@@ -1,14 +1,24 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backgroundPath = resolve(projectRoot, "dist/assets/background.js");
+const contentPath = resolve(projectRoot, "dist/assets/content.js");
 
 if (!existsSync(backgroundPath)) {
   throw new Error("dist/assets/background.js 不存在，请先运行 pnpm build。");
 }
+if (!existsSync(contentPath)) {
+  throw new Error("dist/assets/content.js 不存在，请先运行 pnpm build。");
+}
+
+assert.doesNotMatch(
+  readFileSync(contentPath, "utf8"),
+  /^\s*(?:import|export)\b/mu,
+  "静态 content script 必须是自包含脚本，不能包含 ESM import/export"
+);
 
 let messageListener;
 let nextDownloadUrl = "";
@@ -34,7 +44,13 @@ globalThis.chrome = {
       set: async () => undefined
     },
     session: {
-      get: async () => ({ smarteduAccessToken: "security-test-token" }),
+      get: async () => ({
+        smarteduCredential: {
+          accessToken: "security-test-token",
+          macKey: "security-test-mac-key",
+          clockDiff: 0
+        }
+      }),
       remove: async () => undefined,
       set: async () => undefined
     }
@@ -74,12 +90,13 @@ const allowedResponse = await sendDownloadRequest();
 assert.equal(allowedResponse.ok, true);
 assert.equal(downloads.length, 1);
 assert.equal(downloads[0].url, nextDownloadUrl);
-assert.deepEqual(downloads[0].headers, [
-  {
-    name: "X-ND-AUTH",
-    value: 'MAC id="security-test-token",nonce="0",mac="0"'
-  }
-]);
+assert.equal(downloads[0].headers.length, 1);
+assert.equal(downloads[0].headers[0].name, "X-ND-AUTH");
+assert.match(
+  downloads[0].headers[0].value,
+  /^MAC id="security-test-token",nonce="\d+:[0-9A-Z]{8}",mac="[A-Za-z0-9+/]+=*"$/u
+);
+assert.doesNotMatch(downloads[0].headers[0].value, /nonce="0"/u);
 
 console.log("扩展下载域名与授权头安全检查通过。");
 

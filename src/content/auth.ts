@@ -1,7 +1,6 @@
+import { readSmartEduCredential } from "../shared/auth-token";
 import type { ExtensionRequest } from "../shared/messages";
 
-(() => {
-const AUTH_KEY_PREFIX = "ND_UC_AUTH";
 const POLL_INTERVAL_MS = 1000;
 const MAX_ATTEMPTS = 600;
 const CAPTURE_FLAG = "__schoolEbookDownloaderAuthCapture";
@@ -11,20 +10,24 @@ type AuthWindow = Window &
     [CAPTURE_FLAG]?: boolean;
   };
 
-const authWindow = window as AuthWindow;
-if (!authWindow[CAPTURE_FLAG]) {
+export function startAuthCredentialCapture(): void {
+  const authWindow = window as AuthWindow;
+  if (authWindow[CAPTURE_FLAG]) {
+    return;
+  }
+
   authWindow[CAPTURE_FLAG] = true;
-  void captureTokenWhenAvailable();
+  void captureCredentialWhenAvailable();
 }
 
-async function captureTokenWhenAvailable(): Promise<void> {
+async function captureCredentialWhenAvailable(): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const token = readAuthPageAccessToken();
+    const credential = readSmartEduCredential(localStorage);
 
-    if (token) {
+    if (credential) {
       await chrome.runtime.sendMessage({
-        type: "saveToken",
-        token,
+        type: "saveCredential",
+        credential,
         source: "auth-page"
       } satisfies ExtensionRequest);
       return;
@@ -34,35 +37,8 @@ async function captureTokenWhenAvailable(): Promise<void> {
   }
 }
 
-function readAuthPageAccessToken(): string | undefined {
-  try {
-    const authKey = Object.keys(localStorage).find((key) => key.startsWith(AUTH_KEY_PREFIX));
-    if (!authKey) {
-      return undefined;
-    }
-
-    const tokenDataRaw = localStorage.getItem(authKey);
-    if (!tokenDataRaw) {
-      return undefined;
-    }
-
-    const tokenData = JSON.parse(tokenDataRaw) as { value?: unknown };
-    if (typeof tokenData.value !== "string") {
-      return undefined;
-    }
-
-    const value = JSON.parse(tokenData.value) as { access_token?: unknown };
-    return typeof value.access_token === "string" && value.access_token.trim()
-      ? value.access_token
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
 }
-})();

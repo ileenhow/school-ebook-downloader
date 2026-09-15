@@ -1,27 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { readSmartEduAccessToken } from "../src/shared/auth-token";
+import { readSmartEduCredential } from "../src/shared/auth-token";
 
-describe("readSmartEduAccessToken", () => {
-  it("reads a SmartEdu access token from the matching storage entry", () => {
+describe("readSmartEduCredential", () => {
+  it("reads the three fields required for MAC authentication", () => {
     const storage = createStorage({
-      "ND_UC_AUTH:current": JSON.stringify({
-        value: JSON.stringify({ access_token: "session-token" })
+      "ND_UC_AUTH-app&org&token": JSON.stringify({
+        value: JSON.stringify({
+          access_token: "session-token",
+          mac_key: "session-mac-key",
+          diff: "1250"
+        })
       })
     });
 
-    expect(readSmartEduAccessToken(storage)).toBe("session-token");
+    expect(readSmartEduCredential(storage)).toEqual({
+      accessToken: "session-token",
+      macKey: "session-mac-key",
+      clockDiff: 1250
+    });
   });
 
-  it("ignores unrelated, malformed, or empty entries", () => {
-    expect(readSmartEduAccessToken(createStorage({ other: "value" }))).toBeUndefined();
+  it("does not mistake the SDK cache for the token entry", () => {
+    const storage = createStorage({
+      "ND_UC_AUTH-app&org&sdk_cache": JSON.stringify({
+        value: JSON.stringify({
+          access_token: "cache-token",
+          mac_key: "cache-mac-key",
+          diff: 0
+        })
+      })
+    });
+
+    expect(readSmartEduCredential(storage)).toBeUndefined();
+  });
+
+  it("ignores malformed or incomplete credentials", () => {
     expect(
-      readSmartEduAccessToken(createStorage({ "ND_UC_AUTH:current": "not-json" }))
+      readSmartEduCredential(createStorage({ "ND_UC_AUTH-app&org&token": "not-json" }))
     ).toBeUndefined();
     expect(
-      readSmartEduAccessToken(
+      readSmartEduCredential(
         createStorage({
-          "ND_UC_AUTH:current": JSON.stringify({
-            value: JSON.stringify({ access_token: "  " })
+          "ND_UC_AUTH-app&org&token": JSON.stringify({
+            value: JSON.stringify({ access_token: "token-without-mac-key", diff: 0 })
           })
         })
       )

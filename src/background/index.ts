@@ -10,6 +10,8 @@ import {
   type CatalogCache
 } from "../shared/catalog-cache";
 import { runConcurrentBatch } from "../shared/batch";
+import type { SmartEduCredential } from "../shared/auth-token";
+import { createSmartEduAuthorization } from "../shared/mac-auth";
 import type {
   BatchDownloadProgressMessage,
   BatchDownloadResource,
@@ -23,10 +25,10 @@ import type {
   TokenStatusResponse
 } from "../shared/messages";
 import {
-  clearAccessToken,
-  getAccessToken,
+  clearCredential,
+  getCredential,
   getTokenStatus,
-  saveAccessToken
+  saveCredential
 } from "../shared/storage";
 import {
   parseSmartEduResource,
@@ -66,8 +68,8 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
     case "downloadResources":
       return downloadResources(request.jobId, request.resources);
 
-    case "saveToken":
-      await saveAccessToken(request.token);
+    case "saveCredential":
+      await saveCredential(request.credential);
       await notifyMaterialPagesTokenStatus();
       return { ok: true };
 
@@ -77,10 +79,10 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
     }
 
     case "recoverToken":
-      return recoverAccessToken();
+      return recoverCredential();
 
     case "clearToken":
-      await clearAccessToken();
+      await clearCredential();
       await notifyMaterialPagesTokenStatus();
       return { ok: true };
 
@@ -93,7 +95,7 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
   }
 }
 
-async function recoverAccessToken(): Promise<TokenStatusResponse> {
+async function recoverCredential(): Promise<TokenStatusResponse> {
   const current = await getTokenStatus();
   if (current.hasToken) {
     return { ok: true, ...current };
@@ -136,9 +138,8 @@ async function downloadResources(
   jobId: string,
   requestedResources: BatchDownloadResource[]
 ): Promise<DownloadResourcesResponse> {
-  let accessToken: string;
   try {
-    accessToken = await requireAccessToken();
+    await requireCredential();
   } catch (error) {
     return { ok: false, jobId, error: formatError(error) };
   }
@@ -154,10 +155,9 @@ async function downloadResources(
         {
           contentId: resource.contentId,
           contentType: resource.contentType || "assets_document"
-        },
-        accessToken
+        }
       );
-      const response = await startDownload(parsed, accessToken);
+      const response = await startDownload(parsed);
       return {
         contentId: resource.contentId,
         ok: true,
@@ -218,37 +218,37 @@ function dedupeResources(resources: BatchDownloadResource[]): BatchDownloadResou
 }
 
 async function downloadCurrentPage(pageUrl: string): Promise<DownloadCurrentPageResponse> {
-  const accessToken = await requireAccessToken();
-  const resource = await parseSmartEduResource(pageUrl, accessToken);
-  return startDownload(resource, accessToken);
+  await requireCredential();
+  const resource = await parseSmartEduResource(pageUrl);
+  return startDownload(resource);
 }
 
 async function downloadResource(
   contentId: string,
   contentType: string
 ): Promise<DownloadCurrentPageResponse> {
-  const accessToken = await requireAccessToken();
+  await requireCredential();
   const resource = await parseSmartEduResourceFromParams(
     {
       contentId,
       contentType: contentType || "assets_document"
-    },
-    accessToken
+    }
   );
 
-  return startDownload(resource, accessToken);
+  return startDownload(resource);
 }
 
 async function startDownload(
-  resource: ParsedSmartEduResource,
-  accessToken: string
+  resource: ParsedSmartEduResource
 ): Promise<DownloadCurrentPageResponse> {
+  const credential = await requireCredential();
+  const authorization = await createSmartEduAuthorization(resource.downloadUrl, credential);
   const downloadId = await chrome.downloads.download({
     url: resource.downloadUrl,
     filename: resource.filename,
     conflictAction: "uniquify",
     saveAs: false,
-    headers: [{ name: "X-ND-AUTH", value: buildAuthHeader(accessToken) }]
+    headers: [{ name: "X-ND-AUTH", value: authorization }]
   });
 
   return {
@@ -259,14 +259,14 @@ async function startDownload(
   };
 }
 
-async function requireAccessToken(): Promise<string> {
-  const accessToken = await getAccessToken();
+async function requireCredential(): Promise<SmartEduCredential> {
+  const credential = await getCredential();
 
-  if (!accessToken) {
-    throw new Error("请先登录智慧教育平台后再下载。");
+  if (!credential) {
+    throw new Error("请先登录智慧教育平台并刷新授权后再下载。");
   }
 
-  return accessToken;
+  return credential;
 }
 
 async function getCatalog(): Promise<CatalogResponse> {
@@ -360,10 +360,6 @@ async function notifyMaterialPagesTokenStatus(): Promise<void> {
       }
     })
   );
-}
-
-function buildAuthHeader(accessToken: string): string {
-  return `MAC id="${accessToken}",nonce="0",mac="0"`;
 }
 
 function formatError(error: unknown): string {

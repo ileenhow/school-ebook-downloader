@@ -108,10 +108,10 @@ async function initialize(): Promise<void> {
 }
 
 function renderLoggedOut(status?: TokenStatusResponse): void {
-  tokenStatus.textContent = "未登录 · 无 Access Token";
+  tokenStatus.textContent = "未登录 · 未获取完整授权";
   tokenStatus.title = status?.updatedAt
     ? `上次捕获：${formatDate(status.updatedAt)}`
-    : "当前会话没有可用 Access Token";
+    : "当前会话没有完整的下载授权";
   books = [];
   filters = createEmptyFilters();
   catalogMeta = {};
@@ -135,10 +135,10 @@ function renderLoggedOutActions(): void {
 }
 
 function renderLoggedIn(status: TokenStatusResponse): void {
-  tokenStatus.textContent = "已登录 · Token 已捕获";
+  tokenStatus.textContent = "已登录 · 下载授权已获取";
   tokenStatus.title = status.updatedAt
     ? `捕获时间：${formatDate(status.updatedAt)}`
-    : "当前会话已捕获 Access Token";
+    : "当前会话已捕获完整下载授权";
   panel.innerHTML = `
     <div class="actions">
       <button id="downloadCurrent" type="button">下载当前页 PDF</button>
@@ -594,7 +594,7 @@ async function openLoginPage(): Promise<void> {
 
 async function clearSavedToken(): Promise<void> {
   await chrome.runtime.sendMessage({ type: "clearToken" });
-  setMessage("已清除当前会话中的 Access Token。");
+  setMessage("已清除当前会话中的下载授权。");
   renderLoggedOut();
 }
 

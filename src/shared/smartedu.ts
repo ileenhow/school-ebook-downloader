@@ -25,11 +25,10 @@ const PRIVATE_RESOURCE_BASE = "https://r1-ndr-private.ykt.cbern.com.cn";
 const TRUSTED_DOWNLOAD_DOMAIN = "ykt.cbern.com.cn";
 
 export async function parseSmartEduResource(
-  pageUrl: string,
-  accessToken: string
+  pageUrl: string
 ): Promise<ParsedSmartEduResource> {
   const params = parsePageUrl(pageUrl);
-  return parseSmartEduResourceFromParams(params, accessToken);
+  return parseSmartEduResourceFromParams(params);
 }
 
 export async function parseSmartEduResourceFromParams(
@@ -37,8 +36,7 @@ export async function parseSmartEduResourceFromParams(
     contentId: string;
     contentType: string;
     isBasicWork?: boolean;
-  },
-  _accessToken: string
+  }
 ): Promise<ParsedSmartEduResource> {
   const details = await fetchResourceDetails(params);
   const downloadUrl =
