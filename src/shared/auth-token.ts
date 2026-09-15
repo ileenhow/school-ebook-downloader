@@ -14,8 +14,13 @@ export function readSmartEduCredential(storage: Storage): SmartEduCredential | u
       return undefined;
     }
 
-    const entry = JSON.parse(raw) as { value?: unknown };
+    const entry = JSON.parse(raw) as { value?: unknown; expire?: unknown };
     if (typeof entry.value !== "string") {
+      return undefined;
+    }
+
+    const expiresAt = Number(entry.expire);
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
       return undefined;
     }
 

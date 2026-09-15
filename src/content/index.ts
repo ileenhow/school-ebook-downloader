@@ -52,15 +52,9 @@ async function renderFromTokenStatus(): Promise<void> {
       });
     }
 
-    let status = (await chrome.runtime.sendMessage({
+    const status = (await chrome.runtime.sendMessage({
       type: "getTokenStatus"
     })) as TokenStatusResponse;
-
-    if (status.ok && !status.hasToken) {
-      status = (await chrome.runtime.sendMessage({
-        type: "recoverToken"
-      })) as TokenStatusResponse;
-    }
 
     renderForCurrentPage(status.ok && status.hasToken);
   } catch {

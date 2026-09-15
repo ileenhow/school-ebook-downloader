@@ -34,6 +34,21 @@ describe("readSmartEduCredential", () => {
     expect(readSmartEduCredential(storage)).toBeUndefined();
   });
 
+  it("ignores credentials whose storage wrapper has expired", () => {
+    const storage = createStorage({
+      "ND_UC_AUTH-app&org&token": JSON.stringify({
+        value: JSON.stringify({
+          access_token: "expired-token",
+          mac_key: "expired-mac-key",
+          diff: 0
+        }),
+        expire: Date.now() - 1
+      })
+    });
+
+    expect(readSmartEduCredential(storage)).toBeUndefined();
+  });
+
   it("ignores malformed or incomplete credentials", () => {
     expect(
       readSmartEduCredential(createStorage({ "ND_UC_AUTH-app&org&token": "not-json" }))

@@ -33,10 +33,6 @@ export type GetTokenStatusRequest = {
   type: "getTokenStatus";
 };
 
-export type RecoverTokenRequest = {
-  type: "recoverToken";
-};
-
 export type ClearTokenRequest = {
   type: "clearToken";
 };
@@ -56,7 +52,6 @@ export type ExtensionRequest =
   | DownloadResourcesRequest
   | SaveCredentialRequest
   | GetTokenStatusRequest
-  | RecoverTokenRequest
   | ClearTokenRequest
   | OpenLoginPageRequest
   | GetCatalogRequest;

@@ -314,6 +314,15 @@ select {
   min-height: 18px;
 }
 
+.auth-help {
+  margin-bottom: 2px;
+  padding-top: 10px;
+  border-top: 1px solid #dbe6ef;
+  color: #607586;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .support {
   border-top: 1px solid #dbe6ef;
   color: #607586;

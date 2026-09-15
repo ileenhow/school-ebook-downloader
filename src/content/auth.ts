@@ -1,8 +1,12 @@
-import { readSmartEduCredential } from "../shared/auth-token";
+import {
+  readSmartEduCredential,
+  type SmartEduCredential
+} from "../shared/auth-token";
 import type { ExtensionRequest } from "../shared/messages";
 
-const POLL_INTERVAL_MS = 1000;
-const MAX_ATTEMPTS = 600;
+const POLL_INTERVAL_MS = 250;
+const MAX_ATTEMPTS = 40;
+const UNCHANGED_CREDENTIAL_GRACE_ATTEMPTS = 8;
 const CAPTURE_FLAG = "__schoolEbookDownloaderAuthCapture";
 
 type AuthWindow = Window &
@@ -21,10 +25,18 @@ export function startAuthCredentialCapture(): void {
 }
 
 async function captureCredentialWhenAvailable(): Promise<void> {
+  const initialCredential = readSmartEduCredential(localStorage);
+  await waitForPageLoad();
+
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const credential = readSmartEduCredential(localStorage);
 
-    if (credential) {
+    if (
+      credential &&
+      (!initialCredential ||
+        !credentialsMatch(credential, initialCredential) ||
+        attempt >= UNCHANGED_CREDENTIAL_GRACE_ATTEMPTS)
+    ) {
       await chrome.runtime.sendMessage({
         type: "saveCredential",
         credential,
@@ -35,6 +47,24 @@ async function captureCredentialWhenAvailable(): Promise<void> {
 
     await wait(POLL_INTERVAL_MS);
   }
+}
+
+function waitForPageLoad(): Promise<void> {
+  if (document.readyState === "complete") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.addEventListener("load", () => resolve(), { once: true });
+  });
+}
+
+function credentialsMatch(left: SmartEduCredential, right: SmartEduCredential): boolean {
+  return (
+    left.accessToken === right.accessToken &&
+    left.macKey === right.macKey &&
+    left.clockDiff === right.clockDiff
+  );
 }
 
 function wait(ms: number): Promise<void> {

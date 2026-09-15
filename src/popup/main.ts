@@ -109,10 +109,7 @@ async function initialize(): Promise<void> {
   setMessage("");
 
   try {
-    const initialStatus = await getTokenStatus();
-    const status = initialStatus.ok && !initialStatus.hasToken
-      ? await recoverToken()
-      : initialStatus;
+    const status = await getTokenStatus();
     if (status.ok && status.hasToken) {
       renderLoggedIn(status);
       await loadCatalog();
@@ -225,6 +222,10 @@ function renderCatalogBrowser(): void {
     </div>
 
     ${catalogMeta.error ? `<div class="notice">${escapeHtml(catalogMeta.error)}</div>` : ""}
+
+    <p class="auth-help">
+      下载失败时，如遇到“需要授权”等错误，请尝试刷新授权，或清除授权后重新登录；仍有问题可联系开发者。
+    </p>
 
     <div class="filters">
       ${FILTER_KEYS.map(renderFilterSelect).join("")}
@@ -653,13 +654,6 @@ async function downloadSelectedBooks(visibleBooks: BookItem[]): Promise<void> {
 async function getTokenStatus(): Promise<TokenStatusResponse> {
   return (await chrome.runtime.sendMessage({
     type: "getTokenStatus"
-  })) as TokenStatusResponse;
-}
-
-async function recoverToken(): Promise<TokenStatusResponse> {
-  tokenStatus.textContent = "正在同步智慧教育平台登录状态...";
-  return (await chrome.runtime.sendMessage({
-    type: "recoverToken"
   })) as TokenStatusResponse;
 }
 

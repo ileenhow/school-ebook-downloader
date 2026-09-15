@@ -21,8 +21,7 @@ import type {
   DownloadResourcesResponse,
   ExtensionRequest,
   ExtensionResponse,
-  TokenStatusChangedMessage,
-  TokenStatusResponse
+  TokenStatusChangedMessage
 } from "../shared/messages";
 import {
   clearCredential,
@@ -38,11 +37,8 @@ import {
 
 const LOGIN_URL = "https://auth.smartedu.cn/uias/login";
 const BATCH_DOWNLOAD_CONCURRENCY = 3;
-const TOKEN_RECOVERY_ATTEMPTS = 50;
-const TOKEN_RECOVERY_INTERVAL_MS = 100;
 
 let memoryCatalog: CatalogCache | undefined;
-let tokenRecovery: Promise<TokenStatusResponse> | undefined;
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendResponse) => {
   handleRequest(request)
@@ -78,9 +74,6 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
       return { ok: true, ...status };
     }
 
-    case "recoverToken":
-      return recoverCredential();
-
     case "clearToken":
       await clearCredential();
       await notifyMaterialPagesTokenStatus();
@@ -92,45 +85,6 @@ async function handleRequest(request: ExtensionRequest): Promise<ExtensionRespon
 
     case "getCatalog":
       return getCatalog(request.forceRefresh);
-  }
-}
-
-async function recoverCredential(): Promise<TokenStatusResponse> {
-  const current = await getTokenStatus();
-  if (current.hasToken) {
-    return { ok: true, ...current };
-  }
-
-  if (!tokenRecovery) {
-    tokenRecovery = runTokenRecovery().finally(() => {
-      tokenRecovery = undefined;
-    });
-  }
-
-  return tokenRecovery;
-}
-
-async function runTokenRecovery(): Promise<TokenStatusResponse> {
-  const recoveryTab = await chrome.tabs.create({ url: LOGIN_URL, active: false });
-
-  try {
-    for (let attempt = 0; attempt < TOKEN_RECOVERY_ATTEMPTS; attempt += 1) {
-      await wait(TOKEN_RECOVERY_INTERVAL_MS);
-      const status = await getTokenStatus();
-      if (status.hasToken) {
-        return { ok: true, ...status };
-      }
-    }
-
-    return { ok: true, ...(await getTokenStatus()) };
-  } finally {
-    if (recoveryTab.id !== undefined) {
-      try {
-        await chrome.tabs.remove(recoveryTab.id);
-      } catch {
-        // The user or the authentication flow may already have closed the tab.
-      }
-    }
   }
 }
 
@@ -367,10 +321,4 @@ async function notifyMaterialPagesTokenStatus(): Promise<void> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
