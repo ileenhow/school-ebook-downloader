@@ -10,7 +10,13 @@ permissions:
   contents: read
 
 jobs:
+  secret-scan:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
   build:
+    needs: secret-scan
     name: Build extension
     runs-on: ubuntu-latest
     permissions:

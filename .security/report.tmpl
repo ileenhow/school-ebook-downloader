@@ -1,0 +1,2 @@
+{{range .}}{{printf "%q" .File}}:{{.StartLine}} rule={{.RuleID}} commit={{.Commit}} fingerprint={{printf "%q" .Fingerprint}}
+{{end}}

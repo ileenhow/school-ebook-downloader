@@ -1,0 +1,6 @@
+title = "Repository credential protection"
+[extend]
+useDefault = true
+
+# Add only reviewed, narrowly scoped false-positive rules. Never ignore entire
+# test directories, environment files, or all historical findings.
