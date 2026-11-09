@@ -33,7 +33,7 @@
     "@types/chrome": "^0.1.33",
     "@types/node": "^25.9.3",
     "happy-dom": "^21.0.4",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^7.2.7",
     "vitest": "^4.1.10",
     "husky": "9.1.7"
