@@ -30,7 +30,7 @@
     "prepare": "node .security/install-hooks.mjs"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.33",
+    "@types/chrome": "^0.3.7",
     "@types/node": "^25.9.3",
     "happy-dom": "^21.0.4",
     "typescript": "^5.9.3",
